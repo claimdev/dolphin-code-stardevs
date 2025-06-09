@@ -31,7 +31,7 @@ const Home: React.FC = () => {
           <div className="mb-12">
             <div className="inline-block mb-8">
               <img 
-                src="/logo.png" 
+                src="https://i.imgur.com/srcQZEw.png" 
                 alt="Star Devs Logo" 
                 className="w-24 h-24 mx-auto rounded-3xl shadow-2xl shadow-purple-600/25 animate-pulse"
               />
