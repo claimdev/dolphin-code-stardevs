@@ -186,3 +186,4 @@ For bot integration, ensure your API endpoints are properly configured and CORS 
 - Regular users cannot create, verify, or reject scam reports
 - The website serves as a public viewing platform for verified scam logs
 - All scam log management happens through Discord bot commands with proper permission checks"# y" 
+"# star-devs-website-2.0" 
