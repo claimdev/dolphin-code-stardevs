@@ -138,7 +138,7 @@ const Home: React.FC = () => {
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
               <img 
-                src="/logo.png" 
+                src="https://i.imgur.com/srcQZEw.png" 
                 alt="Star Devs Logo" 
                 className="w-8 h-8 rounded-lg"
               />
