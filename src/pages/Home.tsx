@@ -7,6 +7,9 @@ import { apiUtils } from '../utils/api';
 const Home: React.FC = () => {
   const [stats, setStats] = useState<DiscordStats>({
     memberCount: 284,
+    activeProjects: 23,
+    contributors: 127,
+    codeCommits: '1.2k',
     lastUpdated: new Date().toISOString()
   });
 
