@@ -21,6 +21,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# SI Role IDs
+SI_ROLE_ID = 1291141237868597338
+TRIAL_SI_ROLE_ID = 1291141965596856370
+
 class StarDevsBot(commands.Bot):
     def __init__(self):
         intents = discord.Intents.default()
@@ -60,6 +64,20 @@ class StarDevsBot(commands.Bot):
             logger.error(f"Failed to setup bot: {e}")
             raise
     
+    def has_si_role(self, user: discord.Member) -> bool:
+        """Check if user has SI or Trial SI role"""
+        user_role_ids = [role.id for role in user.roles]
+        return SI_ROLE_ID in user_role_ids or TRIAL_SI_ROLE_ID in user_role_ids
+    
+    def get_si_role_name(self, user: discord.Member) -> str:
+        """Get the SI role name for the user"""
+        user_role_ids = [role.id for role in user.roles]
+        if SI_ROLE_ID in user_role_ids:
+            return "SI"
+        elif TRIAL_SI_ROLE_ID in user_role_ids:
+            return "Trial SI"
+        return "Unknown"
+    
     async def on_ready(self):
         """Called when the bot is ready"""
         logger.info(f'{self.user} has connected to Discord!')
@@ -76,7 +94,7 @@ class StarDevsBot(commands.Bot):
         """Handle slash command errors"""
         if isinstance(error, commands.MissingPermissions):
             await interaction.response.send_message(
-                "❌ You don't have permission to use this command. Only staff members with 'Manage Messages' permission can create scam reports.",
+                "❌ You don't have permission to use this command. Only SI team members can create scam reports.",
                 ephemeral=True
             )
         else:
@@ -158,7 +176,7 @@ class StarDevsBot(commands.Bot):
 bot = StarDevsBot()
 
 # Slash Commands
-@bot.tree.command(name="scam-create", description="Report a scammer (STAFF ONLY - Requires Manage Messages Permission)")
+@bot.tree.command(name="scam-create", description="Report a scammer (SI TEAM ONLY - Requires SI or Trial SI role)")
 @discord.app_commands.describe(
     scammer_username="The username of the scammer",
     scammer_id="The Discord ID of the scammer",
@@ -176,11 +194,11 @@ async def scam_create(
     date_occurred: Optional[str] = None,
     additional_info: Optional[str] = None
 ):
-    """Create a new scam log entry - STAFF ONLY"""
-    # Check permissions
-    if not interaction.user.guild_permissions.manage_messages:
+    """Create a new scam log entry - SI TEAM ONLY"""
+    # Check if user has SI role
+    if not bot.has_si_role(interaction.user):
         await interaction.response.send_message(
-            "❌ You don't have permission to use this command. Only staff members with 'Manage Messages' permission can create scam reports.",
+            "❌ You don't have permission to use this command. Only SI team members (SI or Trial SI) can create scam reports.",
             ephemeral=True
         )
         return
@@ -201,9 +219,12 @@ async def scam_create(
         else:
             date_occurred = datetime.now().strftime('%Y-%m-%d')
         
+        # Get user's SI role
+        si_role = bot.get_si_role_name(interaction.user)
+        
         # Prepare log data
         log_data = {
-            'reported_by': f"{interaction.user.name}#{interaction.user.discriminator} (STAFF)",
+            'reported_by': f"{interaction.user.name}#{interaction.user.discriminator} ({si_role})",
             'scammer_username': scammer_username,
             'scammer_user_id': scammer_id,
             'scammer_additional_info': additional_info,
@@ -227,7 +248,7 @@ async def scam_create(
         
         # Create success embed
         embed = discord.Embed(
-            title="🛡️ Staff Scam Report Created",
+            title="🛡️ SI Scam Report Created",
             description=f"Report #{log_id[:8]} has been submitted for review",
             color=0x00ff00
         )
@@ -236,7 +257,7 @@ async def scam_create(
         embed.add_field(name="Status", value="Pending Review", inline=True)
         embed.add_field(name="Report ID", value=f"`{log_id[:8]}`", inline=True)
         embed.add_field(name="Date Occurred", value=date_occurred, inline=True)
-        embed.add_field(name="Reported By", value=interaction.user.mention, inline=True)
+        embed.add_field(name="Reported By", value=f"{interaction.user.mention} ({si_role})", inline=True)
         embed.set_footer(text=f"Use /scam-verify {log_id[:8]} to verify this report")
         embed.timestamp = datetime.now()
         
@@ -247,8 +268,8 @@ async def scam_create(
             staff_channel = bot.get_channel(bot.config.STAFF_CHANNEL_ID)
             if staff_channel:
                 staff_embed = embed.copy()
-                staff_embed.title = "🚨 New Scam Report Submitted"
-                staff_embed.description = f"A new scam report has been submitted by {interaction.user.mention}"
+                staff_embed.title = "🚨 New SI Scam Report Submitted"
+                staff_embed.description = f"A new scam report has been submitted by {interaction.user.mention} ({si_role})"
                 await staff_channel.send(embed=staff_embed)
         
         # Sync with API
@@ -285,7 +306,7 @@ async def scam_create(
 @bot.tree.command(name="scam-info", description="Get detailed information about a scam log")
 @discord.app_commands.describe(log_id="The ID of the scam log (first 8 characters)")
 async def scam_info(interaction: discord.Interaction, log_id: str):
-    """Get scam log details - Staff can see all, users only see verified/rejected"""
+    """Get scam log details - SI team can see all, users only see verified/rejected"""
     await interaction.response.defer()
     
     try:
@@ -302,9 +323,9 @@ async def scam_info(interaction: discord.Interaction, log_id: str):
             return
         
         # Check permissions for pending logs
-        if matching_log['status'] == 'pending' and not interaction.user.guild_permissions.manage_messages:
+        if matching_log['status'] == 'pending' and not bot.has_si_role(interaction.user):
             await interaction.followup.send(
-                "❌ You don't have permission to view pending reports. Only staff can view pending reports.",
+                "❌ You don't have permission to view pending reports. Only SI team members can view pending reports.",
                 ephemeral=True
             )
             return
@@ -350,10 +371,10 @@ async def scam_info(interaction: discord.Interaction, log_id: str):
         
         embed.set_footer(text=f"Created: {matching_log['created_at'][:10]} | Full ID: {matching_log['id']}")
         
-        # Add staff actions if user is staff and log is pending
-        if interaction.user.guild_permissions.manage_messages and matching_log['status'] == 'pending':
+        # Add SI team actions if user is SI team and log is pending
+        if bot.has_si_role(interaction.user) and matching_log['status'] == 'pending':
             embed.add_field(
-                name="Staff Actions",
+                name="SI Team Actions",
                 value=f"Use `/scam-verify {log_id}` or `/scam-reject {log_id}` to update status",
                 inline=False
             )
@@ -375,7 +396,7 @@ async def scam_info(interaction: discord.Interaction, log_id: str):
 
 @bot.tree.command(name="scam-logs", description="List recent scam logs")
 @discord.app_commands.describe(
-    status="Filter by status (default: verified for non-staff, all for staff)",
+    status="Filter by status (default: verified for non-SI, all for SI team)",
     limit="Number of logs to show (max 25)"
 )
 async def scam_logs(
@@ -383,18 +404,18 @@ async def scam_logs(
     status: Optional[str] = None,
     limit: int = 10
 ):
-    """List scam logs with filtering - Non-staff can only see verified logs"""
+    """List scam logs with filtering - Non-SI can only see verified logs"""
     await interaction.response.defer()
     
     try:
-        # Determine default status based on permissions
+        # Determine default status based on SI role
         if status is None:
-            status = "all" if interaction.user.guild_permissions.manage_messages else "verified"
+            status = "all" if bot.has_si_role(interaction.user) else "verified"
         
-        # Non-staff can only see verified logs
-        if not interaction.user.guild_permissions.manage_messages and status != "verified":
+        # Non-SI can only see verified logs
+        if not bot.has_si_role(interaction.user) and status != "verified":
             await interaction.followup.send(
-                "❌ You can only view verified scam logs. Staff members can view all statuses.",
+                "❌ You can only view verified scam logs. SI team members can view all statuses.",
                 ephemeral=True
             )
             return
@@ -463,14 +484,14 @@ async def scam_logs(
         logger.error(f"Error fetching scam logs: {e}")
         await interaction.followup.send(f"❌ Failed to fetch scam logs: {str(e)}", ephemeral=True)
 
-@bot.tree.command(name="scam-verify", description="Verify a scam report (STAFF ONLY)")
+@bot.tree.command(name="scam-verify", description="Verify a scam report (SI TEAM ONLY)")
 @discord.app_commands.describe(log_id="The ID of the scam log to verify")
 async def scam_verify(interaction: discord.Interaction, log_id: str):
-    """Verify a scam report - STAFF ONLY"""
-    # Check permissions
-    if not interaction.user.guild_permissions.manage_messages:
+    """Verify a scam report - SI TEAM ONLY"""
+    # Check SI role
+    if not bot.has_si_role(interaction.user):
         await interaction.response.send_message(
-            "❌ You don't have permission to use this command. Only staff members can verify scam reports.",
+            "❌ You don't have permission to use this command. Only SI team members can verify scam reports.",
             ephemeral=True
         )
         return
@@ -501,6 +522,8 @@ async def scam_verify(interaction: discord.Interaction, log_id: str):
         success = await bot.db.update_scam_log_status(matching_log['id'], 'verified')
         
         if success:
+            si_role = bot.get_si_role_name(interaction.user)
+            
             # Create success embed
             embed = discord.Embed(
                 title="✅ Scam Report Verified",
@@ -509,7 +532,7 @@ async def scam_verify(interaction: discord.Interaction, log_id: str):
             )
             embed.add_field(name="Scammer", value=matching_log['scammer_username'], inline=True)
             embed.add_field(name="Type", value=matching_log['scam_type'], inline=True)
-            embed.add_field(name="Verified By", value=interaction.user.mention, inline=True)
+            embed.add_field(name="Verified By", value=f"{interaction.user.mention} ({si_role})", inline=True)
             embed.set_footer(text=f"Report ID: {matching_log['id']}")
             embed.timestamp = datetime.now()
             
@@ -539,14 +562,14 @@ async def scam_verify(interaction: discord.Interaction, log_id: str):
         logger.error(f"Error verifying scam report: {e}")
         await interaction.followup.send(f"❌ Failed to verify scam report: {str(e)}", ephemeral=True)
 
-@bot.tree.command(name="scam-reject", description="Reject a scam report (STAFF ONLY)")
+@bot.tree.command(name="scam-reject", description="Reject a scam report (SI TEAM ONLY)")
 @discord.app_commands.describe(log_id="The ID of the scam log to reject")
 async def scam_reject(interaction: discord.Interaction, log_id: str):
-    """Reject a scam report - STAFF ONLY"""
-    # Check permissions
-    if not interaction.user.guild_permissions.manage_messages:
+    """Reject a scam report - SI TEAM ONLY"""
+    # Check SI role
+    if not bot.has_si_role(interaction.user):
         await interaction.response.send_message(
-            "❌ You don't have permission to use this command. Only staff members can reject scam reports.",
+            "❌ You don't have permission to use this command. Only SI team members can reject scam reports.",
             ephemeral=True
         )
         return
@@ -577,6 +600,8 @@ async def scam_reject(interaction: discord.Interaction, log_id: str):
         success = await bot.db.update_scam_log_status(matching_log['id'], 'rejected')
         
         if success:
+            si_role = bot.get_si_role_name(interaction.user)
+            
             # Create success embed
             embed = discord.Embed(
                 title="❌ Scam Report Rejected",
@@ -585,7 +610,7 @@ async def scam_reject(interaction: discord.Interaction, log_id: str):
             )
             embed.add_field(name="Scammer", value=matching_log['scammer_username'], inline=True)
             embed.add_field(name="Type", value=matching_log['scam_type'], inline=True)
-            embed.add_field(name="Rejected By", value=interaction.user.mention, inline=True)
+            embed.add_field(name="Rejected By", value=f"{interaction.user.mention} ({si_role})", inline=True)
             embed.set_footer(text=f"Report ID: {matching_log['id']}")
             embed.timestamp = datetime.now()
             
@@ -616,12 +641,12 @@ async def scam_reject(interaction: discord.Interaction, log_id: str):
         await interaction.followup.send(f"❌ Failed to reject scam report: {str(e)}", ephemeral=True)
 
 # Admin commands for bot management
-@bot.tree.command(name="bot-stats", description="Show bot statistics (STAFF ONLY)")
+@bot.tree.command(name="bot-stats", description="Show bot statistics (SI TEAM ONLY)")
 async def bot_stats(interaction: discord.Interaction):
-    """Show bot statistics - STAFF ONLY"""
-    if not interaction.user.guild_permissions.manage_messages:
+    """Show bot statistics - SI TEAM ONLY"""
+    if not bot.has_si_role(interaction.user):
         await interaction.response.send_message(
-            "❌ You don't have permission to use this command.",
+            "❌ You don't have permission to use this command. Only SI team members can view bot statistics.",
             ephemeral=True
         )
         return
@@ -637,8 +662,10 @@ async def bot_stats(interaction: discord.Interaction):
         
         discord_stats = await bot.db.get_discord_stats()
         
+        si_role = bot.get_si_role_name(interaction.user)
+        
         embed = discord.Embed(
-            title="🤖 Bot Statistics",
+            title="🤖 SI Bot Statistics",
             color=0x5865f2
         )
         
@@ -660,7 +687,7 @@ async def bot_stats(interaction: discord.Interaction):
         **API Status:** {'✅ Connected' if bot.api_client else '❌ Disconnected'}
         """, inline=True)
         
-        embed.set_footer(text="Star Devs Bot | Made by DOLPHIN_DEV")
+        embed.set_footer(text=f"Requested by {interaction.user.name} ({si_role}) | Star Devs SI Bot")
         embed.timestamp = datetime.now()
         
         await interaction.followup.send(embed=embed)
