@@ -14,7 +14,7 @@ class Database:
     async def init_db(self):
         """Initialize the database with required tables"""
         async with aiosqlite.connect(self.db_path) as db:
-            # Scam logs table - updated schema
+            # Scam logs table - FIXED schema with correct field names
             await db.execute('''
                 CREATE TABLE IF NOT EXISTS scam_logs (
                     id TEXT PRIMARY KEY,
@@ -30,6 +30,23 @@ class Database:
                     updated_at TEXT NOT NULL
                 )
             ''')
+            
+            # Check if we need to migrate old schema
+            async with db.execute("PRAGMA table_info(scam_logs)") as cursor:
+                columns = await cursor.fetchall()
+                column_names = [col[1] for col in columns]
+                
+                # Add missing columns if they don't exist
+                if 'victim_user_id' not in column_names:
+                    # If old schema exists, migrate it
+                    if 'scammer_user_id' in column_names:
+                        await db.execute('ALTER TABLE scam_logs ADD COLUMN victim_user_id TEXT')
+                        await db.execute('UPDATE scam_logs SET victim_user_id = scammer_user_id WHERE victim_user_id IS NULL')
+                
+                if 'victim_additional_info' not in column_names:
+                    if 'scammer_additional_info' in column_names:
+                        await db.execute('ALTER TABLE scam_logs ADD COLUMN victim_additional_info TEXT')
+                        await db.execute('UPDATE scam_logs SET victim_additional_info = scammer_additional_info WHERE victim_additional_info IS NULL')
             
             # Discord stats table
             await db.execute('''
