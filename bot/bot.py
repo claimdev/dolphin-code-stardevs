@@ -11,12 +11,12 @@ from config import Config
 from database import Database
 from api_client import APIClient
 
-# Configure logging
+# Configure logging with UTF-8 encoding to handle emojis
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler('bot.log'),
+        logging.FileHandler('bot.log', encoding='utf-8'),
         logging.StreamHandler()
     ]
 )
@@ -71,8 +71,9 @@ class StarDevsBot(commands.Bot):
     async def add_commands_to_tree(self):
         """Add all slash commands to the command tree"""
         try:
-            # Clear existing commands
-            self.tree.clear_commands()
+            # Clear existing commands for the specific guild
+            guild_obj = discord.Object(id=self.config.GUILD_ID)
+            self.tree.clear_commands(guild=guild_obj)
             
             # Add all commands
             self.tree.add_command(scam_create)
@@ -141,14 +142,14 @@ class StarDevsBot(commands.Bot):
         """Handle slash command errors"""
         if isinstance(error, commands.MissingPermissions):
             await interaction.response.send_message(
-                "❌ You don't have permission to use this command. Only SI team members can create scam reports.",
+                "You don't have permission to use this command. Only SI team members can create scam reports.",
                 ephemeral=True
             )
         else:
             logger.error(f"Command error: {error}")
             if not interaction.response.is_done():
                 await interaction.response.send_message(
-                    f"❌ An error occurred: {str(error)}",
+                    f"An error occurred: {str(error)}",
                     ephemeral=True
                 )
     
@@ -168,12 +169,12 @@ class StarDevsBot(commands.Bot):
                     async with self.api_client as client:
                         result = await client.update_member_count(member_count)
                         if result.get('success'):
-                            logger.info(f"✅ Member count updated: {member_count}")
+                            logger.info(f"Member count updated: {member_count}")
                         else:
-                            logger.warning(f"❌ Failed to update member count via API: {result.get('error')}")
+                            logger.warning(f"Failed to update member count via API: {result.get('error')}")
                 
         except Exception as e:
-            logger.error(f"❌ Error updating member count: {e}")
+            logger.error(f"Error updating member count: {e}")
     
     @tasks.loop(minutes=30)
     async def sync_with_api(self):
@@ -189,11 +190,11 @@ class StarDevsBot(commands.Bot):
             async with self.api_client as client:
                 for log in recent_logs:
                     try:
-                        # Convert database format to API format (fixed field mapping)
+                        # Convert database format to API format (FIXED field mapping)
                         api_data = {
                             'reportedBy': log['reported_by'],
                             'reporterUsername': self.extract_username_for_id_from_string(log['reported_by']),
-                            'victimUserId': log['victim_user_id'],  # Fixed: use correct field name
+                            'victimUserId': log['victim_user_id'],  # FIXED: correct field name
                             'victimAdditionalInfo': log.get('victim_additional_info'),
                             'scamType': log['scam_type'],
                             'scamDescription': log['scam_description'],
@@ -266,7 +267,7 @@ async def scam_create(
     # Check if user has SI role
     if not bot.has_si_role(interaction.user):
         await interaction.response.send_message(
-            "❌ You don't have permission to use this command. Only SI team members (SI or Trial SI) can create scam reports.",
+            "You don't have permission to use this command. Only SI team members (SI or Trial SI) can create scam reports.",
             ephemeral=True
         )
         return
@@ -280,7 +281,7 @@ async def scam_create(
                 datetime.strptime(date_occurred, '%Y-%m-%d')
             except ValueError:
                 await interaction.followup.send(
-                    "❌ Invalid date format. Please use YYYY-MM-DD format.",
+                    "Invalid date format. Please use YYYY-MM-DD format.",
                     ephemeral=True
                 )
                 return
@@ -295,7 +296,7 @@ async def scam_create(
         
         if not evidence or not evidence[0]:
             await interaction.followup.send(
-                "❌ At least one piece of evidence is required for scam reports.",
+                "At least one piece of evidence is required for scam reports.",
                 ephemeral=True
             )
             return
@@ -328,7 +329,7 @@ async def scam_create(
         
         # Create success embed
         embed = discord.Embed(
-            title="🛡️ SI Scam Report Created",
+            title="SI Scam Report Created",
             description=f"Report #{log_id} has been submitted for review",
             color=0x00ff00
         )
@@ -349,7 +350,7 @@ async def scam_create(
             staff_channel = bot.get_channel(bot.config.STAFF_CHANNEL_ID)
             if staff_channel:
                 staff_embed = embed.copy()
-                staff_embed.title = "🚨 New SI Scam Report Submitted"
+                staff_embed.title = "New SI Scam Report Submitted"
                 staff_embed.description = f"A new scam report has been submitted by {interaction.user.mention} ({si_role})"
                 await staff_channel.send(embed=staff_embed)
         
@@ -368,9 +369,9 @@ async def scam_create(
                 }
                 result = await client.create_scam_log(api_data)
                 if result.get('success'):
-                    logger.info(f"✅ Scam log synced to website API")
+                    logger.info(f"Scam log synced to website API")
                 else:
-                    logger.warning(f"❌ Failed to sync to API: {result.get('error')}")
+                    logger.warning(f"Failed to sync to API: {result.get('error')}")
         
     except Exception as e:
         logger.error(f"Error creating scam report: {e}")
@@ -382,7 +383,7 @@ async def scam_create(
             False,
             str(e)
         )
-        await interaction.followup.send(f"❌ Failed to create scam report: {str(e)}", ephemeral=True)
+        await interaction.followup.send(f"Failed to create scam report: {str(e)}", ephemeral=True)
 
 @discord.app_commands.command(name="scam-info", description="Get detailed information about a scam log")
 @discord.app_commands.describe(log_id="The ID of the scam log")
@@ -400,13 +401,13 @@ async def scam_info(interaction: discord.Interaction, log_id: str):
                 break
         
         if not matching_log:
-            await interaction.followup.send("❌ Scam log not found.", ephemeral=True)
+            await interaction.followup.send("Scam log not found.", ephemeral=True)
             return
         
         # Check permissions for pending logs
         if matching_log['status'] == 'pending' and not bot.has_si_role(interaction.user):
             await interaction.followup.send(
-                "❌ You don't have permission to view pending reports. Only SI team members can view pending reports.",
+                "You don't have permission to view pending reports. Only SI team members can view pending reports.",
                 ephemeral=True
             )
             return
@@ -425,7 +426,7 @@ async def scam_info(interaction: discord.Interaction, log_id: str):
         }
         
         embed = discord.Embed(
-            title=f"🚨 Scam Report #{matching_log['id']}",
+            title=f"Scam Report #{matching_log['id']}",
             description=matching_log['scam_description'],
             color=status_colors.get(matching_log['status'], 0x808080)
         )
@@ -481,7 +482,7 @@ async def scam_info(interaction: discord.Interaction, log_id: str):
         
     except Exception as e:
         logger.error(f"Error fetching scam info: {e}")
-        await interaction.followup.send(f"❌ Failed to fetch scam log: {str(e)}", ephemeral=True)
+        await interaction.followup.send(f"Failed to fetch scam log: {str(e)}", ephemeral=True)
 
 @discord.app_commands.command(name="scam-logs", description="List recent scam logs")
 @discord.app_commands.describe(
@@ -510,7 +511,7 @@ async def scam_logs(
         # Non-SI can only see verified logs
         if not bot.has_si_role(interaction.user) and status != "verified":
             await interaction.followup.send(
-                "❌ You can only view verified scam logs. SI team members can view all statuses.",
+                "You can only view verified scam logs. SI team members can view all statuses.",
                 ephemeral=True
             )
             return
@@ -522,7 +523,7 @@ async def scam_logs(
         logs = await bot.db.get_scam_logs(status=status, limit=limit)
         
         if not logs:
-            await interaction.followup.send(f"📋 No {status} scam logs found.")
+            await interaction.followup.send(f"No {status} scam logs found.")
             return
         
         # Create embed
@@ -540,7 +541,7 @@ async def scam_logs(
         }
         
         embed = discord.Embed(
-            title=f"📋 Recent Scam Logs ({status.title()})",
+            title=f"Recent Scam Logs ({status.title()})",
             description=f"Showing {len(logs)} logs",
             color=status_colors.get(status, 0x808080)
         )
@@ -577,7 +578,7 @@ async def scam_logs(
         
     except Exception as e:
         logger.error(f"Error fetching scam logs: {e}")
-        await interaction.followup.send(f"❌ Failed to fetch scam logs: {str(e)}", ephemeral=True)
+        await interaction.followup.send(f"Failed to fetch scam logs: {str(e)}", ephemeral=True)
 
 @discord.app_commands.command(name="scam-verify", description="Verify a scam report (SI TEAM ONLY)")
 @discord.app_commands.describe(log_id="The ID of the scam log to verify")
@@ -586,7 +587,7 @@ async def scam_verify(interaction: discord.Interaction, log_id: str):
     # Check SI role
     if not bot.has_si_role(interaction.user):
         await interaction.response.send_message(
-            "❌ You don't have permission to use this command. Only SI team members can verify scam reports.",
+            "You don't have permission to use this command. Only SI team members can verify scam reports.",
             ephemeral=True
         )
         return
@@ -603,12 +604,12 @@ async def scam_verify(interaction: discord.Interaction, log_id: str):
                 break
         
         if not matching_log:
-            await interaction.followup.send("❌ Scam log not found.", ephemeral=True)
+            await interaction.followup.send("Scam log not found.", ephemeral=True)
             return
         
         if matching_log['status'] != 'pending':
             await interaction.followup.send(
-                f"❌ This report is already {matching_log['status']}. Only pending reports can be verified.",
+                f"This report is already {matching_log['status']}. Only pending reports can be verified.",
                 ephemeral=True
             )
             return
@@ -621,7 +622,7 @@ async def scam_verify(interaction: discord.Interaction, log_id: str):
             
             # Create success embed
             embed = discord.Embed(
-                title="✅ Scam Report Verified",
+                title="Scam Report Verified",
                 description=f"Report #{log_id} has been verified and is now public",
                 color=0x00ff00
             )
@@ -638,9 +639,9 @@ async def scam_verify(interaction: discord.Interaction, log_id: str):
                 async with bot.api_client as client:
                     result = await client.update_scam_log_status(matching_log['id'], 'verified')
                     if result.get('success'):
-                        logger.info(f"✅ Status update synced to API")
+                        logger.info(f"Status update synced to API")
                     else:
-                        logger.warning(f"❌ Failed to sync status to API: {result.get('error')}")
+                        logger.warning(f"Failed to sync status to API: {result.get('error')}")
             
             # Log activity
             await bot.db.log_bot_activity(
@@ -651,11 +652,11 @@ async def scam_verify(interaction: discord.Interaction, log_id: str):
                 True
             )
         else:
-            await interaction.followup.send("❌ Failed to verify report.", ephemeral=True)
+            await interaction.followup.send("Failed to verify report.", ephemeral=True)
         
     except Exception as e:
         logger.error(f"Error verifying scam report: {e}")
-        await interaction.followup.send(f"❌ Failed to verify scam report: {str(e)}", ephemeral=True)
+        await interaction.followup.send(f"Failed to verify scam report: {str(e)}", ephemeral=True)
 
 @discord.app_commands.command(name="scam-reject", description="Reject a scam report (SI TEAM ONLY)")
 @discord.app_commands.describe(log_id="The ID of the scam log to reject")
@@ -664,7 +665,7 @@ async def scam_reject(interaction: discord.Interaction, log_id: str):
     # Check SI role
     if not bot.has_si_role(interaction.user):
         await interaction.response.send_message(
-            "❌ You don't have permission to use this command. Only SI team members can reject scam reports.",
+            "You don't have permission to use this command. Only SI team members can reject scam reports.",
             ephemeral=True
         )
         return
@@ -681,12 +682,12 @@ async def scam_reject(interaction: discord.Interaction, log_id: str):
                 break
         
         if not matching_log:
-            await interaction.followup.send("❌ Scam log not found.", ephemeral=True)
+            await interaction.followup.send("Scam log not found.", ephemeral=True)
             return
         
         if matching_log['status'] != 'pending':
             await interaction.followup.send(
-                f"❌ This report is already {matching_log['status']}. Only pending reports can be rejected.",
+                f"This report is already {matching_log['status']}. Only pending reports can be rejected.",
                 ephemeral=True
             )
             return
@@ -699,7 +700,7 @@ async def scam_reject(interaction: discord.Interaction, log_id: str):
             
             # Create success embed
             embed = discord.Embed(
-                title="❌ Scam Report Rejected",
+                title="Scam Report Rejected",
                 description=f"Report #{log_id} has been rejected",
                 color=0xff0000
             )
@@ -716,9 +717,9 @@ async def scam_reject(interaction: discord.Interaction, log_id: str):
                 async with bot.api_client as client:
                     result = await client.update_scam_log_status(matching_log['id'], 'rejected')
                     if result.get('success'):
-                        logger.info(f"✅ Status update synced to API")
+                        logger.info(f"Status update synced to API")
                     else:
-                        logger.warning(f"❌ Failed to sync status to API: {result.get('error')}")
+                        logger.warning(f"Failed to sync status to API: {result.get('error')}")
             
             # Log activity
             await bot.db.log_bot_activity(
@@ -729,11 +730,11 @@ async def scam_reject(interaction: discord.Interaction, log_id: str):
                 True
             )
         else:
-            await interaction.followup.send("❌ Failed to reject report.", ephemeral=True)
+            await interaction.followup.send("Failed to reject report.", ephemeral=True)
         
     except Exception as e:
         logger.error(f"Error rejecting scam report: {e}")
-        await interaction.followup.send(f"❌ Failed to reject scam report: {str(e)}", ephemeral=True)
+        await interaction.followup.send(f"Failed to reject scam report: {str(e)}", ephemeral=True)
 
 @discord.app_commands.command(name="scam-remove", description="Remove a scam report from database and website (SI TEAM ONLY)")
 @discord.app_commands.describe(log_id="The ID of the scam log to remove")
@@ -742,7 +743,7 @@ async def scam_remove(interaction: discord.Interaction, log_id: str):
     # Check SI role
     if not bot.has_si_role(interaction.user):
         await interaction.response.send_message(
-            "❌ You don't have permission to use this command. Only SI team members can remove scam reports.",
+            "You don't have permission to use this command. Only SI team members can remove scam reports.",
             ephemeral=True
         )
         return
@@ -759,7 +760,7 @@ async def scam_remove(interaction: discord.Interaction, log_id: str):
                 break
         
         if not matching_log:
-            await interaction.followup.send("❌ Scam log not found.", ephemeral=True)
+            await interaction.followup.send("Scam log not found.", ephemeral=True)
             return
         
         # Remove from database
@@ -770,7 +771,7 @@ async def scam_remove(interaction: discord.Interaction, log_id: str):
             
             # Create success embed
             embed = discord.Embed(
-                title="🗑️ Scam Report Removed",
+                title="Scam Report Removed",
                 description=f"Report #{log_id} has been permanently deleted",
                 color=0xff6600
             )
@@ -787,9 +788,9 @@ async def scam_remove(interaction: discord.Interaction, log_id: str):
                 async with bot.api_client as client:
                     result = await client.remove_scam_log(matching_log['id'])
                     if result.get('success'):
-                        logger.info(f"✅ Removal synced to API")
+                        logger.info(f"Removal synced to API")
                     else:
-                        logger.warning(f"❌ Failed to sync removal to API: {result.get('error')}")
+                        logger.warning(f"Failed to sync removal to API: {result.get('error')}")
             
             # Log activity
             await bot.db.log_bot_activity(
@@ -800,18 +801,18 @@ async def scam_remove(interaction: discord.Interaction, log_id: str):
                 True
             )
         else:
-            await interaction.followup.send("❌ Failed to remove report.", ephemeral=True)
+            await interaction.followup.send("Failed to remove report.", ephemeral=True)
         
     except Exception as e:
         logger.error(f"Error removing scam report: {e}")
-        await interaction.followup.send(f"❌ Failed to remove scam report: {str(e)}", ephemeral=True)
+        await interaction.followup.send(f"Failed to remove scam report: {str(e)}", ephemeral=True)
 
 @discord.app_commands.command(name="bot-stats", description="Show bot statistics (SI TEAM ONLY)")
 async def bot_stats(interaction: discord.Interaction):
     """Show bot statistics - SI TEAM ONLY"""
     if not bot.has_si_role(interaction.user):
         await interaction.response.send_message(
-            "❌ You don't have permission to use this command. Only SI team members can view bot statistics.",
+            "You don't have permission to use this command. Only SI team members can view bot statistics.",
             ephemeral=True
         )
         return
@@ -830,26 +831,26 @@ async def bot_stats(interaction: discord.Interaction):
         si_role = bot.get_si_role_name(interaction.user)
         
         embed = discord.Embed(
-            title="🤖 SI Bot Statistics",
+            title="SI Bot Statistics",
             color=0x5865f2
         )
         
-        embed.add_field(name="📊 Scam Reports", value=f"""
+        embed.add_field(name="Scam Reports", value=f"""
         **Total:** {len(all_logs)}
         **Pending:** {pending_count}
         **Verified:** {verified_count}
         **Rejected:** {rejected_count}
         """, inline=True)
         
-        embed.add_field(name="👥 Discord Stats", value=f"""
+        embed.add_field(name="Discord Stats", value=f"""
         **Members:** {discord_stats.get('member_count', 0)}
         **Last Updated:** {discord_stats.get('last_updated', 'Never')[:10]}
         """, inline=True)
         
-        embed.add_field(name="🔧 Bot Info", value=f"""
+        embed.add_field(name="Bot Info", value=f"""
         **Guilds:** {len(bot.guilds)}
         **Latency:** {round(bot.latency * 1000)}ms
-        **API Status:** {'✅ Connected' if bot.api_client else '❌ Disconnected'}
+        **API Status:** {'Connected' if bot.api_client else 'Disconnected'}
         """, inline=True)
         
         embed.set_footer(text=f"Requested by {interaction.user.name} ({si_role}) | Star Devs SI Bot")
@@ -859,7 +860,7 @@ async def bot_stats(interaction: discord.Interaction):
         
     except Exception as e:
         logger.error(f"Error getting bot stats: {e}")
-        await interaction.followup.send(f"❌ Failed to get bot statistics: {str(e)}", ephemeral=True)
+        await interaction.followup.send(f"Failed to get bot statistics: {str(e)}", ephemeral=True)
 
 # Run the bot
 if __name__ == "__main__":
