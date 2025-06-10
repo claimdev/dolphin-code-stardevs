@@ -42,7 +42,7 @@ const ScamLogCard: React.FC<ScamLogCardProps> = ({ log, onClick }) => {
           </div>
           <div>
             <h3 className="font-semibold text-white text-lg">{log.scamDetails.type}</h3>
-            <p className="text-gray-400 text-sm">#{log.id.slice(0, 8)}</p>
+            <p className="text-gray-400 text-sm">#{log.id}</p>
           </div>
         </div>
         
@@ -55,7 +55,7 @@ const ScamLogCard: React.FC<ScamLogCardProps> = ({ log, onClick }) => {
       <div className="space-y-3">
         <div className="flex items-center space-x-2 text-sm text-gray-300">
           <User className="w-4 h-4" />
-          <span>Scammer: {log.scammerInfo.username}</span>
+          <span>Victim ID: {log.victimInfo.userId}</span>
         </div>
         
         <p className="text-gray-400 text-sm line-clamp-2">
@@ -67,9 +67,15 @@ const ScamLogCard: React.FC<ScamLogCardProps> = ({ log, onClick }) => {
             Reported by {log.reportedBy}
           </span>
           <span className="text-xs text-gray-500">
-            {new Date(log.createdAt).toLocaleDateString()}
+            {new Date(log.reportDate).toLocaleDateString()}
           </span>
         </div>
+
+        {log.scamDetails.evidence && log.scamDetails.evidence.length > 0 && (
+          <div className="flex items-center space-x-2 text-xs text-blue-400">
+            <span>📎 {log.scamDetails.evidence.length} evidence item{log.scamDetails.evidence.length !== 1 ? 's' : ''}</span>
+          </div>
+        )}
       </div>
     </div>
   );
