@@ -1,4 +1,5 @@
 import aiohttp
+import aiohttp
 import json
 from typing import Dict, Any, Optional
 import logging
@@ -30,13 +31,15 @@ class APIClient:
         }
         
         try:
-            async with self.session.request(method, url, json=data, headers=headers) as response:
+            # Add timeout to prevent hanging
+            timeout = aiohttp.ClientTimeout(total=10)
+            async with self.session.request(method, url, json=data, headers=headers, timeout=timeout) as response:
                 if response.content_type == 'application/json':
                     result = await response.json()
                 else:
-                    # Handle non-JSON responses
+                    # Handle non-JSON responses (like 404 pages)
                     text = await response.text()
-                    result = {'success': False, 'error': f'Non-JSON response: {text}'}
+                    result = {'success': False, 'error': f'Non-JSON response: {text[:100]}...'}
                 
                 # Ensure we have a proper response format
                 if 'success' not in result:
@@ -51,38 +54,38 @@ class APIClient:
                 return result
                 
         except aiohttp.ClientError as e:
-            logger.error(f"API request failed: {e}")
+            logger.warning(f"API request failed: {e}")
             return {'success': False, 'error': str(e), 'status': 0}
         except Exception as e:
-            logger.error(f"Unexpected error in API request: {e}")
+            logger.warning(f"Unexpected error in API request: {e}")
             return {'success': False, 'error': str(e), 'status': 0}
     
     async def create_scam_log(self, log_data: Dict[str, Any]) -> Dict[str, Any]:
         """Create a new scam log via API"""
-        return await self._request('POST', '/api/bot/scam-create', log_data)
+        return await self._request('POST', '/scam-create', log_data)
     
     async def get_scam_log(self, log_id: str) -> Dict[str, Any]:
         """Get a specific scam log via API"""
-        return await self._request('GET', f'/api/bot/scam-info/{log_id}')
+        return await self._request('GET', f'/scam-info/{log_id}')
     
     async def get_scam_logs(self, status: str = 'all', limit: int = 10) -> Dict[str, Any]:
         """Get scam logs via API"""
         params = {'status': status, 'limit': limit}
-        endpoint = f"/api/bot/scam-logs?{'&'.join(f'{k}={v}' for k, v in params.items())}"
+        endpoint = f"/scam-logs?{'&'.join(f'{k}={v}' for k, v in params.items())}"
         return await self._request('GET', endpoint)
     
     async def update_scam_log_status(self, log_id: str, status: str) -> Dict[str, Any]:
         """Update scam log status via API"""
-        return await self._request('POST', f'/api/bot/update-status', {'logId': log_id, 'status': status})
+        return await self._request('POST', f'/update-status', {'logId': log_id, 'status': status})
     
     async def remove_scam_log(self, log_id: str) -> Dict[str, Any]:
         """Remove scam log via API"""
-        return await self._request('DELETE', f'/api/bot/scam-remove/{log_id}')
+        return await self._request('DELETE', f'/scam-remove/{log_id}')
     
     async def update_member_count(self, member_count: int) -> Dict[str, Any]:
         """Update Discord member count via API"""
-        return await self._request('POST', '/api/bot/update-member-count', {'memberCount': member_count})
+        return await self._request('POST', '/update-member-count', {'memberCount': member_count})
     
     async def get_member_count(self) -> Dict[str, Any]:
         """Get current member count via API"""
-        return await self._request('GET', '/api/bot/member-count')
+        return await self._request('GET', '/member-count')
