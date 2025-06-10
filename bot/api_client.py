@@ -1,5 +1,4 @@
 import aiohttp
-import aiohttp
 import json
 from typing import Dict, Any, Optional
 import logging
@@ -21,8 +20,10 @@ class APIClient:
     
     async def _request(self, method: str, endpoint: str, data: Dict[str, Any] = None) -> Dict[str, Any]:
         """Make an HTTP request to the API"""
-        if not self.session:
+        close_after = False
+        if not self.session or self.session.closed:
             self.session = aiohttp.ClientSession()
+            close_after = True
         
         url = f"{self.base_url}{endpoint}"
         headers = {
@@ -59,6 +60,10 @@ class APIClient:
         except Exception as e:
             logger.warning(f"Unexpected error in API request: {e}")
             return {'success': False, 'error': str(e), 'status': 0}
+        finally:
+            # Close the session if we created it in this method
+            if close_after and self.session and not self.session.closed:
+                await self.session.close()
     
     async def create_scam_log(self, log_data: Dict[str, Any]) -> Dict[str, Any]:
         """Create a new scam log via API"""
