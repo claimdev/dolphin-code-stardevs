@@ -55,6 +55,9 @@ class StarDevsBot(commands.Bot):
             # Initialize API client
             self.api_client = APIClient(self.config.API_BASE_URL)
             
+            # Add all slash commands to the tree
+            await self.add_commands_to_tree()
+            
             # Start background tasks
             self.update_member_count.start()
             self.sync_with_api.start()
@@ -63,6 +66,24 @@ class StarDevsBot(commands.Bot):
         except Exception as e:
             logger.error(f"Failed to setup bot: {e}")
             raise
+    
+    async def add_commands_to_tree(self):
+        """Add all slash commands to the command tree"""
+        try:
+            # Clear existing commands
+            self.tree.clear_commands()
+            
+            # Add all commands
+            self.tree.add_command(scam_create)
+            self.tree.add_command(scam_info)
+            self.tree.add_command(scam_logs)
+            self.tree.add_command(scam_verify)
+            self.tree.add_command(scam_reject)
+            self.tree.add_command(bot_stats)
+            
+            logger.info("All commands added to tree successfully")
+        except Exception as e:
+            logger.error(f"Failed to add commands to tree: {e}")
     
     def has_si_role(self, user: discord.Member) -> bool:
         """Check if user has SI or Trial SI role"""
@@ -85,8 +106,14 @@ class StarDevsBot(commands.Bot):
         
         # Sync slash commands
         try:
-            synced = await self.tree.sync()
-            logger.info(f'Synced {len(synced)} command(s)')
+            guild = discord.Object(id=self.config.GUILD_ID)
+            synced = await self.tree.sync(guild=guild)
+            logger.info(f'Synced {len(synced)} command(s) to guild {self.config.GUILD_ID}')
+            
+            # Also sync globally (takes up to 1 hour to propagate)
+            global_synced = await self.tree.sync()
+            logger.info(f'Synced {len(global_synced)} command(s) globally')
+            
         except Exception as e:
             logger.error(f'Failed to sync commands: {e}')
     
@@ -175,8 +202,9 @@ class StarDevsBot(commands.Bot):
 # Initialize bot instance
 bot = StarDevsBot()
 
-# Slash Commands
-@bot.tree.command(name="scam-create", description="Report a scammer (SI TEAM ONLY - Requires SI or Trial SI role)")
+# Slash Commands - Define them as standalone functions for the tree
+
+@discord.app_commands.command(name="scam-create", description="Report a scammer (SI TEAM ONLY - Requires SI or Trial SI role)")
 @discord.app_commands.describe(
     scammer_username="The username of the scammer",
     scammer_id="The Discord ID of the scammer",
@@ -303,7 +331,7 @@ async def scam_create(
         )
         await interaction.followup.send(f"❌ Failed to create scam report: {str(e)}", ephemeral=True)
 
-@bot.tree.command(name="scam-info", description="Get detailed information about a scam log")
+@discord.app_commands.command(name="scam-info", description="Get detailed information about a scam log")
 @discord.app_commands.describe(log_id="The ID of the scam log (first 8 characters)")
 async def scam_info(interaction: discord.Interaction, log_id: str):
     """Get scam log details - SI team can see all, users only see verified/rejected"""
@@ -394,11 +422,17 @@ async def scam_info(interaction: discord.Interaction, log_id: str):
         logger.error(f"Error fetching scam info: {e}")
         await interaction.followup.send(f"❌ Failed to fetch scam log: {str(e)}", ephemeral=True)
 
-@bot.tree.command(name="scam-logs", description="List recent scam logs")
+@discord.app_commands.command(name="scam-logs", description="List recent scam logs")
 @discord.app_commands.describe(
     status="Filter by status (default: verified for non-SI, all for SI team)",
     limit="Number of logs to show (max 25)"
 )
+@discord.app_commands.choices(status=[
+    discord.app_commands.Choice(name="All", value="all"),
+    discord.app_commands.Choice(name="Pending", value="pending"),
+    discord.app_commands.Choice(name="Verified", value="verified"),
+    discord.app_commands.Choice(name="Rejected", value="rejected")
+])
 async def scam_logs(
     interaction: discord.Interaction,
     status: Optional[str] = None,
@@ -484,7 +518,7 @@ async def scam_logs(
         logger.error(f"Error fetching scam logs: {e}")
         await interaction.followup.send(f"❌ Failed to fetch scam logs: {str(e)}", ephemeral=True)
 
-@bot.tree.command(name="scam-verify", description="Verify a scam report (SI TEAM ONLY)")
+@discord.app_commands.command(name="scam-verify", description="Verify a scam report (SI TEAM ONLY)")
 @discord.app_commands.describe(log_id="The ID of the scam log to verify")
 async def scam_verify(interaction: discord.Interaction, log_id: str):
     """Verify a scam report - SI TEAM ONLY"""
@@ -562,7 +596,7 @@ async def scam_verify(interaction: discord.Interaction, log_id: str):
         logger.error(f"Error verifying scam report: {e}")
         await interaction.followup.send(f"❌ Failed to verify scam report: {str(e)}", ephemeral=True)
 
-@bot.tree.command(name="scam-reject", description="Reject a scam report (SI TEAM ONLY)")
+@discord.app_commands.command(name="scam-reject", description="Reject a scam report (SI TEAM ONLY)")
 @discord.app_commands.describe(log_id="The ID of the scam log to reject")
 async def scam_reject(interaction: discord.Interaction, log_id: str):
     """Reject a scam report - SI TEAM ONLY"""
@@ -640,8 +674,7 @@ async def scam_reject(interaction: discord.Interaction, log_id: str):
         logger.error(f"Error rejecting scam report: {e}")
         await interaction.followup.send(f"❌ Failed to reject scam report: {str(e)}", ephemeral=True)
 
-# Admin commands for bot management
-@bot.tree.command(name="bot-stats", description="Show bot statistics (SI TEAM ONLY)")
+@discord.app_commands.command(name="bot-stats", description="Show bot statistics (SI TEAM ONLY)")
 async def bot_stats(interaction: discord.Interaction):
     """Show bot statistics - SI TEAM ONLY"""
     if not bot.has_si_role(interaction.user):
