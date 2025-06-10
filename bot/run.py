@@ -18,17 +18,17 @@ from bot import bot
 from config import Config
 
 def setup_logging():
-    """Setup logging configuration"""
+    """Setup logging configuration with UTF-8 encoding"""
     # Create logs directory if it doesn't exist
     logs_dir = bot_dir / 'logs'
     logs_dir.mkdir(exist_ok=True)
     
-    # Configure logging
+    # Configure logging with UTF-8 encoding to handle emojis
     logging.basicConfig(
         level=logging.INFO,
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
         handlers=[
-            logging.FileHandler(logs_dir / 'bot.log'),
+            logging.FileHandler(logs_dir / 'bot.log', encoding='utf-8'),
             logging.StreamHandler(sys.stdout)
         ]
     )
@@ -47,7 +47,7 @@ def check_environment():
             missing_vars.append(var)
     
     if missing_vars:
-        print(f"❌ Missing required environment variables: {', '.join(missing_vars)}")
+        print(f"Missing required environment variables: {', '.join(missing_vars)}")
         print("Please check your .env file or environment configuration.")
         return False
     
@@ -65,18 +65,18 @@ async def main():
         # Validate configuration
         Config.validate()
         
-        logger.info("🚀 Starting Star Devs Discord Bot...")
-        logger.info(f"📁 Working directory: {bot_dir}")
-        logger.info(f"🔧 API Base URL: {Config.API_BASE_URL}")
-        logger.info(f"🏠 Guild ID: {Config.GUILD_ID}")
+        logger.info("Starting Star Devs Discord Bot...")
+        logger.info(f"Working directory: {bot_dir}")
+        logger.info(f"API Base URL: {Config.API_BASE_URL}")
+        logger.info(f"Guild ID: {Config.GUILD_ID}")
         
         # Start the bot
         await bot.start(Config.BOT_TOKEN)
         
     except KeyboardInterrupt:
-        logger.info("🛑 Bot stopped by user")
+        logger.info("Bot stopped by user")
     except Exception as e:
-        logger.error(f"❌ Fatal error: {e}")
+        logger.error(f"Fatal error: {e}")
         sys.exit(1)
     finally:
         if not bot.is_closed():
@@ -94,7 +94,7 @@ if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        print("\n🛑 Bot stopped by user")
+        print("\nBot stopped by user")
     except Exception as e:
-        print(f"❌ Failed to start bot: {e}")
+        print(f"Failed to start bot: {e}")
         sys.exit(1)
