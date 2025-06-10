@@ -29,14 +29,41 @@ export const apiUtils = {
   },
 
   // Scam Logs API
-  async createScamLog(logData: Omit<ScamLog, 'id' | 'createdAt' | 'updatedAt'>): Promise<ApiResponse<ScamLog>> {
+  async createScamLog(logData: {
+    reportedBy: string;
+    reporterUsername: string;
+    victimUserId: string;
+    victimAdditionalInfo?: string;
+    scamType: string;
+    scamDescription: string;
+    evidence: string[];
+    dateOccurred: string;
+  }): Promise<ApiResponse<ScamLog>> {
     try {
+      // Validate evidence is provided
+      if (!logData.evidence || logData.evidence.length === 0) {
+        return { success: false, error: 'Evidence is required for scam reports' };
+      }
+
       const newLog: ScamLog = {
-        ...logData,
-        id: crypto.randomUUID(),
+        id: storageUtils.generateScamLogId(logData.reporterUsername),
+        reportedBy: logData.reportedBy,
+        victimInfo: {
+          userId: logData.victimUserId,
+          additionalInfo: logData.victimAdditionalInfo
+        },
+        scamDetails: {
+          type: logData.scamType,
+          description: logData.scamDescription,
+          evidence: logData.evidence,
+          dateOccurred: logData.dateOccurred
+        },
+        status: 'pending',
         createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
+        updatedAt: new Date().toISOString(),
+        reportDate: new Date().toISOString()
       };
+      
       storageUtils.addScamLog(newLog);
       return { success: true, data: newLog };
     } catch (error) {
@@ -75,6 +102,18 @@ export const apiUtils = {
       return { success: false, error: 'Scam log not found' };
     } catch (error) {
       return { success: false, error: 'Failed to update scam log' };
+    }
+  },
+
+  async removeScamLog(id: string): Promise<ApiResponse<boolean>> {
+    try {
+      const success = storageUtils.removeScamLog(id);
+      if (success) {
+        return { success: true, data: true };
+      }
+      return { success: false, error: 'Scam log not found' };
+    } catch (error) {
+      return { success: false, error: 'Failed to remove scam log' };
     }
   }
 };
