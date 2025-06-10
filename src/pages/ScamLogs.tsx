@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Filter, AlertTriangle, Info, Shield } from 'lucide-react';
+import { Search, Filter, AlertTriangle, Info, Shield, Activity } from 'lucide-react';
 import ScamLogCard from '../components/ScamLogCard';
 import ScamLogModal from '../components/ScamLogModal';
+import APIStatus from '../components/APIStatus';
 import { ScamLog } from '../types';
 import { apiUtils } from '../utils/api';
 
@@ -78,7 +79,7 @@ const ScamLogs: React.FC = () => {
               </h1>
             </div>
             <p className="text-gray-400 text-lg max-w-2xl mx-auto mb-4">
-               Reports are submitted by our Scam Investigation Team. To report a scam open a SI ticket.
+              Reports are submitted by our Scam Investigation Team. To report a scam, open a SI ticket.
             </p>
             
             {/* Staff Only Notice */}
@@ -88,46 +89,50 @@ const ScamLogs: React.FC = () => {
             </div>
           </div>
 
-          {/* Controls */}
-          <div className="bg-gray-800/50 backdrop-blur-sm border border-gray-700 rounded-2xl p-6 mb-8">
-            <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
-              <div className="flex flex-col sm:flex-row gap-4 flex-1">
-                {/* Search */}
-                <div className="relative flex-1 max-w-md">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-                  <input
-                    type="text"
-                    placeholder="Search logs..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full pl-10 pr-4 py-3 bg-gray-700/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  />
+          {/* Controls and API Status */}
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-8">
+            {/* Main Controls */}
+            <div className="lg:col-span-3 bg-gray-800/50 backdrop-blur-sm border border-gray-700 rounded-2xl p-6">
+              <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+                <div className="flex flex-col sm:flex-row gap-4 flex-1">
+                  {/* Search */}
+                  <div className="relative flex-1 max-w-md">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                    <input
+                      type="text"
+                      placeholder="Search logs..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="w-full pl-10 pr-4 py-3 bg-gray-700/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                  </div>
+
+                  {/* Filter */}
+                  <div className="relative">
+                    <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                    <select
+                      value={statusFilter}
+                      onChange={(e) => setStatusFilter(e.target.value as any)}
+                      className="pl-10 pr-8 py-3 bg-gray-700/50 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none cursor-pointer"
+                    >
+                      <option value="all">All Status</option>
+                      <option value="pending">Pending</option>
+                      <option value="verified">Verified</option>
+                      <option value="rejected">Rejected</option>
+                    </select>
+                  </div>
                 </div>
 
-                {/* Filter */}
-                <div className="relative">
-                  <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-                  <select
-                    value={statusFilter}
-                    onChange={(e) => setStatusFilter(e.target.value as any)}
-                    className="pl-10 pr-8 py-3 bg-gray-700/50 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none cursor-pointer"
-                  >
-                    <option value="all">All Status</option>
-                    <option value="pending">Pending</option>
-                    <option value="verified">Verified</option>
-                    <option value="rejected">Rejected</option>
-                  </select>
+                {/* Results Count */}
+                <div className="bg-purple-900/30 border border-purple-500/50 rounded-lg px-4 py-2 text-sm text-purple-300">
+                  {filteredLogs.length} of {logs.length} logs
                 </div>
-              </div>
-
-              {/* API Info */}
-              <div className="bg-purple-900/30 border border-purple-500/50 rounded-lg px-4 py-2 text-sm text-purple-300">
-                Scam Investigaion Team 
               </div>
             </div>
 
-            <div className="mt-4 text-sm text-gray-400">
-              Showing {filteredLogs.length} of {logs.length} logs
+            {/* API Status */}
+            <div className="lg:col-span-1">
+              <APIStatus />
             </div>
           </div>
 
@@ -154,15 +159,39 @@ const ScamLogs: React.FC = () => {
                   : 'No scam reports have been submitted yet. Reports are created by staff members through our Discord bot.'
                 }
               </p>
-              <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-4 max-w-md mx-auto">
-                <p className="text-sm text-gray-400 mb-2">
-                  <strong className="text-white">For the SI team</strong> Use Discord bot commands:
-                </p>
-                <ul className="text-xs text-gray-500 space-y-1">
-                  <li>• <code className="bg-gray-700 px-1 rounded">/scam-create</code> - Create new report</li>
-                  <li>• <code className="bg-gray-700 px-1 rounded">/scam-verify</code> - Verify report</li>
-                  <li>• <code className="bg-gray-700 px-1 rounded">/scam-reject</code> - Reject report</li>
-                </ul>
+              
+              {/* Bot Commands Info */}
+              <div className="bg-gray-800/50 border border-gray-700 rounded-xl p-6 max-w-2xl mx-auto">
+                <div className="flex items-center space-x-2 mb-4">
+                  <Activity className="w-5 h-5 text-blue-400" />
+                  <h4 className="text-lg font-semibold text-white">Discord Bot Commands</h4>
+                </div>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                  <div className="bg-gray-900/50 rounded-lg p-4">
+                    <h5 className="text-white font-medium mb-2">Staff Commands</h5>
+                    <ul className="text-gray-400 space-y-1">
+                      <li>• <code className="bg-gray-700 px-1 rounded text-xs">/scam-create</code> - Create report</li>
+                      <li>• <code className="bg-gray-700 px-1 rounded text-xs">/scam-verify</code> - Verify report</li>
+                      <li>• <code className="bg-gray-700 px-1 rounded text-xs">/scam-reject</code> - Reject report</li>
+                      <li>• <code className="bg-gray-700 px-1 rounded text-xs">/bot-stats</code> - View statistics</li>
+                    </ul>
+                  </div>
+                  
+                  <div className="bg-gray-900/50 rounded-lg p-4">
+                    <h5 className="text-white font-medium mb-2">Public Commands</h5>
+                    <ul className="text-gray-400 space-y-1">
+                      <li>• <code className="bg-gray-700 px-1 rounded text-xs">/scam-info</code> - View log details</li>
+                      <li>• <code className="bg-gray-700 px-1 rounded text-xs">/scam-logs</code> - List verified logs</li>
+                    </ul>
+                  </div>
+                </div>
+                
+                <div className="mt-4 p-3 bg-blue-900/20 border border-blue-500/30 rounded-lg">
+                  <p className="text-blue-300 text-xs">
+                    <strong>Note:</strong> Only staff members with "Manage Messages" permission can create and manage scam reports.
+                  </p>
+                </div>
               </div>
             </div>
           )}
