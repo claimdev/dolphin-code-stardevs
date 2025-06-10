@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Filter, AlertTriangle, Info, Shield, Activity } from 'lucide-react';
+import { Search, Filter, AlertTriangle, Info, Ticket } from 'lucide-react';
 import ScamLogCard from '../components/ScamLogCard';
 import ScamLogModal from '../components/ScamLogModal';
 import APIStatus from '../components/APIStatus';
@@ -36,10 +36,10 @@ const ScamLogs: React.FC = () => {
 
     if (searchTerm) {
       filtered = filtered.filter(log => 
-        log.scammerInfo.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        log.scammerInfo.userId.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        log.victimInfo.userId.toLowerCase().includes(searchTerm.toLowerCase()) ||
         log.scamDetails.type.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        log.scamDetails.description.toLowerCase().includes(searchTerm.toLowerCase())
+        log.scamDetails.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        log.id.toLowerCase().includes(searchTerm.toLowerCase())
       );
     }
 
@@ -78,15 +78,9 @@ const ScamLogs: React.FC = () => {
                 Scam Logs
               </h1>
             </div>
-            <p className="text-gray-400 text-lg max-w-2xl mx-auto mb-4">
-              Reports are submitted by our Scam Investigation Team. To report a scam, open a SI ticket.
+            <p className="text-gray-400 text-lg max-w-2xl mx-auto">
+              Community scam reports to help protect our members from fraudulent activities.
             </p>
-            
-            {/* Staff Only Notice */}
-            <div className="inline-flex items-center space-x-2 bg-blue-900/30 border border-blue-500/50 rounded-lg px-4 py-2 text-sm text-blue-300">
-              <Shield className="w-4 h-4" />
-              <span>Reports can only be created by Scam Investigation Team</span>
-            </div>
           </div>
 
           {/* Controls and API Status */}
@@ -100,7 +94,7 @@ const ScamLogs: React.FC = () => {
                     <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
                     <input
                       type="text"
-                      placeholder="Search logs..."
+                      placeholder="Search by ID, victim ID, type..."
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
                       className="w-full pl-10 pr-4 py-3 bg-gray-700/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
@@ -152,46 +146,33 @@ const ScamLogs: React.FC = () => {
               <div className="inline-flex items-center justify-center w-16 h-16 bg-gray-800 rounded-full mb-4">
                 <Info className="w-8 h-8 text-gray-400" />
               </div>
-              <h3 className="text-xl font-medium text-white mb-2">No scam logs found</h3>
+              <h3 className="text-xl font-medium text-white mb-2">
+                {searchTerm || statusFilter !== 'all' 
+                  ? 'No scam logs found'
+                  : 'There are no scam logs available right now'
+                }
+              </h3>
               <p className="text-gray-400 mb-6">
                 {searchTerm || statusFilter !== 'all' 
                   ? 'Try adjusting your search or filter criteria.'
-                  : 'No scam reports have been submitted yet. Reports are created by staff members through our Discord bot.'
+                  : 'If you have been scammed, please open a ticket.'
                 }
               </p>
               
-              {/* Bot Commands Info */}
-              <div className="bg-gray-800/50 border border-gray-700 rounded-xl p-6 max-w-2xl mx-auto">
+              {/* Ticket Info */}
+              <div className="bg-gray-800/50 border border-gray-700 rounded-xl p-6 max-w-md mx-auto">
                 <div className="flex items-center space-x-2 mb-4">
-                  <Activity className="w-5 h-5 text-blue-400" />
-                  <h4 className="text-lg font-semibold text-white">Discord Bot Commands</h4>
+                  <Ticket className="w-5 h-5 text-blue-400" />
+                  <h4 className="text-lg font-semibold text-white">Need Help?</h4>
                 </div>
                 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                  <div className="bg-gray-900/50 rounded-lg p-4">
-                    <h5 className="text-white font-medium mb-2">Staff Commands</h5>
-                    <ul className="text-gray-400 space-y-1">
-                      <li>• <code className="bg-gray-700 px-1 rounded text-xs">/scam-create</code> - Create report</li>
-                      <li>• <code className="bg-gray-700 px-1 rounded text-xs">/scam-verify</code> - Verify report</li>
-                      <li>• <code className="bg-gray-700 px-1 rounded text-xs">/scam-reject</code> - Reject report</li>
-                      <li>• <code className="bg-gray-700 px-1 rounded text-xs">/bot-stats</code> - View statistics</li>
-                    </ul>
-                  </div>
-                  
-                  <div className="bg-gray-900/50 rounded-lg p-4">
-                    <h5 className="text-white font-medium mb-2">Public Commands</h5>
-                    <ul className="text-gray-400 space-y-1">
-                      <li>• <code className="bg-gray-700 px-1 rounded text-xs">/scam-info</code> - View log details</li>
-                      <li>• <code className="bg-gray-700 px-1 rounded text-xs">/scam-logs</code> - List verified logs</li>
-                    </ul>
-                  </div>
-                </div>
+                <p className="text-gray-400 text-sm mb-4">
+                  If you've been scammed or need to report suspicious activity, please open a support ticket in our Discord server.
+                </p>
                 
-                <div className="mt-4 p-3 bg-blue-900/20 border border-blue-500/30 rounded-lg">
-                  <p className="text-blue-300 text-xs">
-                    <strong>Note:</strong> Only staff members with "Manage Messages" permission can create and manage scam reports.
-                  </p>
-                </div>
+                <button className="w-full bg-blue-600 hover:bg-blue-500 text-white font-medium py-2 px-4 rounded-lg transition-colors">
+                  Open Ticket
+                </button>
               </div>
             </div>
           )}
