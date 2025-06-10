@@ -264,7 +264,11 @@ async def scam_create(
                     'dateOccurred': f"{date_occurred}T00:00:00Z",
                     'evidence': []
                 }
-                await client.create_scam_log(api_data)
+                result = await client.create_scam_log(api_data)
+                if result.get('success'):
+                    logger.info(f"✅ Scam log synced to website API")
+                else:
+                    logger.warning(f"❌ Failed to sync to API: {result.get('error')}")
         
     except Exception as e:
         logger.error(f"Error creating scam report: {e}")
@@ -514,7 +518,11 @@ async def scam_verify(interaction: discord.Interaction, log_id: str):
             # Sync with API
             if bot.api_client:
                 async with bot.api_client as client:
-                    await client.update_scam_log_status(matching_log['id'], 'verified')
+                    result = await client.update_scam_log_status(matching_log['id'], 'verified')
+                    if result.get('success'):
+                        logger.info(f"✅ Status update synced to API")
+                    else:
+                        logger.warning(f"❌ Failed to sync status to API: {result.get('error')}")
             
             # Log activity
             await bot.db.log_bot_activity(
@@ -586,7 +594,11 @@ async def scam_reject(interaction: discord.Interaction, log_id: str):
             # Sync with API
             if bot.api_client:
                 async with bot.api_client as client:
-                    await client.update_scam_log_status(matching_log['id'], 'rejected')
+                    result = await client.update_scam_log_status(matching_log['id'], 'rejected')
+                    if result.get('success'):
+                        logger.info(f"✅ Status update synced to API")
+                    else:
+                        logger.warning(f"❌ Failed to sync status to API: {result.get('error')}")
             
             # Log activity
             await bot.db.log_bot_activity(
@@ -645,7 +657,7 @@ async def bot_stats(interaction: discord.Interaction):
         embed.add_field(name="🔧 Bot Info", value=f"""
         **Guilds:** {len(bot.guilds)}
         **Latency:** {round(bot.latency * 1000)}ms
-        **Uptime:** {datetime.now().strftime('%Y-%m-%d %H:%M')}
+        **API Status:** {'✅ Connected' if bot.api_client else '❌ Disconnected'}
         """, inline=True)
         
         embed.set_footer(text="Star Devs Bot | Made by DOLPHIN_DEV")
