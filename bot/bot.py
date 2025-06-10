@@ -3,6 +3,7 @@ from discord.ext import commands, tasks
 import aiohttp
 import asyncio
 import logging
+import re
 from datetime import datetime
 from typing import Optional
 
@@ -79,6 +80,7 @@ class StarDevsBot(commands.Bot):
             self.tree.add_command(scam_logs)
             self.tree.add_command(scam_verify)
             self.tree.add_command(scam_reject)
+            self.tree.add_command(scam_remove)
             self.tree.add_command(bot_stats)
             
             logger.info("All commands added to tree successfully")
@@ -98,6 +100,11 @@ class StarDevsBot(commands.Bot):
         elif TRIAL_SI_ROLE_ID in user_role_ids:
             return "Trial SI"
         return "Unknown"
+    
+    def extract_username_for_id(self, user: discord.Member) -> str:
+        """Extract username for ID generation (first 3 letters)"""
+        clean_name = re.sub(r'[^a-zA-Z]', '', user.name)
+        return clean_name[:3].upper() if clean_name else "USR"
     
     async def on_ready(self):
         """Called when the bot is ready"""
@@ -171,9 +178,9 @@ class StarDevsBot(commands.Bot):
                     # Convert database format to API format
                     api_data = {
                         'reportedBy': log['reported_by'],
-                        'scammerUsername': log['scammer_username'],
-                        'scammerUserId': log['scammer_user_id'],
-                        'scammerAdditionalInfo': log.get('scammer_additional_info'),
+                        'reporterUsername': self.extract_username_for_id_from_string(log['reported_by']),
+                        'victimUserId': log['victim_user_id'],
+                        'victimAdditionalInfo': log.get('victim_additional_info'),
                         'scamType': log['scam_type'],
                         'scamDescription': log['scam_description'],
                         'dateOccurred': log['date_occurred'],
@@ -191,6 +198,13 @@ class StarDevsBot(commands.Bot):
         except Exception as e:
             logger.error(f"Error syncing with API: {e}")
     
+    def extract_username_for_id_from_string(self, reported_by: str) -> str:
+        """Extract username from reported_by string for ID generation"""
+        # Extract username from "username#discriminator (role)" format
+        username = reported_by.split('#')[0] if '#' in reported_by else reported_by.split(' ')[0]
+        clean_name = re.sub(r'[^a-zA-Z]', '', username)
+        return clean_name[:3].upper() if clean_name else "USR"
+    
     @update_member_count.before_loop
     async def before_update_member_count(self):
         await self.wait_until_ready()
@@ -206,19 +220,27 @@ bot = StarDevsBot()
 
 @discord.app_commands.command(name="scam-create", description="Report a scammer (SI TEAM ONLY - Requires SI or Trial SI role)")
 @discord.app_commands.describe(
-    scammer_username="The username of the scammer",
-    scammer_id="The Discord ID of the scammer",
+    victim_user_id="The Discord ID of the victim",
     scam_type="Type of scam (e.g., Phishing, Fake Nitro, etc.)",
     description="Detailed description of the scam",
+    evidence1="Evidence URL/link (REQUIRED)",
+    evidence2="Additional evidence URL/link (optional)",
+    evidence3="Additional evidence URL/link (optional)",
+    evidence4="Additional evidence URL/link (optional)",
+    evidence5="Additional evidence URL/link (optional)",
     date_occurred="Date when the scam occurred (YYYY-MM-DD) - optional",
-    additional_info="Additional information about the scammer - optional"
+    additional_info="Additional information about the victim - optional"
 )
 async def scam_create(
     interaction: discord.Interaction,
-    scammer_username: str,
-    scammer_id: str,
+    victim_user_id: str,
     scam_type: str,
     description: str,
+    evidence1: str,
+    evidence2: Optional[str] = None,
+    evidence3: Optional[str] = None,
+    evidence4: Optional[str] = None,
+    evidence5: Optional[str] = None,
     date_occurred: Optional[str] = None,
     additional_info: Optional[str] = None
 ):
@@ -247,19 +269,31 @@ async def scam_create(
         else:
             date_occurred = datetime.now().strftime('%Y-%m-%d')
         
+        # Collect evidence (at least one required)
+        evidence = [evidence1]
+        for ev in [evidence2, evidence3, evidence4, evidence5]:
+            if ev:
+                evidence.append(ev)
+        
+        if not evidence or not evidence[0]:
+            await interaction.followup.send(
+                "❌ At least one piece of evidence is required for scam reports.",
+                ephemeral=True
+            )
+            return
+        
         # Get user's SI role
         si_role = bot.get_si_role_name(interaction.user)
         
         # Prepare log data
         log_data = {
             'reported_by': f"{interaction.user.name}#{interaction.user.discriminator} ({si_role})",
-            'scammer_username': scammer_username,
-            'scammer_user_id': scammer_id,
-            'scammer_additional_info': additional_info,
+            'victim_user_id': victim_user_id,
+            'victim_additional_info': additional_info,
             'scam_type': scam_type,
             'scam_description': description,
             'date_occurred': date_occurred,
-            'evidence': []
+            'evidence': evidence
         }
         
         # Create in local database
@@ -270,23 +304,24 @@ async def scam_create(
             str(interaction.user.id),
             str(interaction.user),
             'scam-create',
-            f"scammer: {scammer_username}, type: {scam_type}",
+            f"victim: {victim_user_id}, type: {scam_type}",
             True
         )
         
         # Create success embed
         embed = discord.Embed(
             title="🛡️ SI Scam Report Created",
-            description=f"Report #{log_id[:8]} has been submitted for review",
+            description=f"Report #{log_id} has been submitted for review",
             color=0x00ff00
         )
-        embed.add_field(name="Scammer", value=scammer_username, inline=True)
+        embed.add_field(name="Victim ID", value=victim_user_id, inline=True)
         embed.add_field(name="Type", value=scam_type, inline=True)
         embed.add_field(name="Status", value="Pending Review", inline=True)
-        embed.add_field(name="Report ID", value=f"`{log_id[:8]}`", inline=True)
+        embed.add_field(name="Report ID", value=f"`{log_id}`", inline=True)
         embed.add_field(name="Date Occurred", value=date_occurred, inline=True)
-        embed.add_field(name="Reported By", value=f"{interaction.user.mention} ({si_role})", inline=True)
-        embed.set_footer(text=f"Use /scam-verify {log_id[:8]} to verify this report")
+        embed.add_field(name="Evidence Count", value=f"{len(evidence)} items", inline=True)
+        embed.add_field(name="Reported By", value=f"{interaction.user.mention} ({si_role})", inline=False)
+        embed.set_footer(text=f"Use /scam-verify {log_id} to verify this report")
         embed.timestamp = datetime.now()
         
         await interaction.followup.send(embed=embed)
@@ -305,13 +340,13 @@ async def scam_create(
             async with bot.api_client as client:
                 api_data = {
                     'reportedBy': log_data['reported_by'],
-                    'scammerUsername': scammer_username,
-                    'scammerUserId': scammer_id,
-                    'scammerAdditionalInfo': additional_info,
+                    'reporterUsername': bot.extract_username_for_id(interaction.user),
+                    'victimUserId': victim_user_id,
+                    'victimAdditionalInfo': additional_info,
                     'scamType': scam_type,
                     'scamDescription': description,
                     'dateOccurred': f"{date_occurred}T00:00:00Z",
-                    'evidence': []
+                    'evidence': evidence
                 }
                 result = await client.create_scam_log(api_data)
                 if result.get('success'):
@@ -325,24 +360,24 @@ async def scam_create(
             str(interaction.user.id),
             str(interaction.user),
             'scam-create',
-            f"scammer: {scammer_username}, type: {scam_type}",
+            f"victim: {victim_user_id}, type: {scam_type}",
             False,
             str(e)
         )
         await interaction.followup.send(f"❌ Failed to create scam report: {str(e)}", ephemeral=True)
 
 @discord.app_commands.command(name="scam-info", description="Get detailed information about a scam log")
-@discord.app_commands.describe(log_id="The ID of the scam log (first 8 characters)")
+@discord.app_commands.describe(log_id="The ID of the scam log")
 async def scam_info(interaction: discord.Interaction, log_id: str):
     """Get scam log details - SI team can see all, users only see verified/rejected"""
     await interaction.response.defer()
     
     try:
-        # Find log by partial ID
+        # Find log by ID (exact match or partial match)
         logs = await bot.db.get_scam_logs()
         matching_log = None
         for log in logs:
-            if log['id'].startswith(log_id):
+            if log['id'] == log_id or log['id'].startswith(log_id):
                 matching_log = log
                 break
         
@@ -372,40 +407,48 @@ async def scam_info(interaction: discord.Interaction, log_id: str):
         }
         
         embed = discord.Embed(
-            title=f"🚨 Scam Report #{matching_log['id'][:8]}",
+            title=f"🚨 Scam Report #{matching_log['id']}",
             description=matching_log['scam_description'],
             color=status_colors.get(matching_log['status'], 0x808080)
         )
         
-        embed.add_field(name="Scammer Username", value=matching_log['scammer_username'], inline=True)
-        embed.add_field(name="Scammer ID", value=f"`{matching_log['scammer_user_id']}`", inline=True)
+        embed.add_field(name="Victim User ID", value=f"`{matching_log['victim_user_id']}`", inline=True)
         embed.add_field(name="Scam Type", value=matching_log['scam_type'], inline=True)
         
         status_text = f"{status_emojis.get(matching_log['status'], '⚪')} {matching_log['status'].title()}"
         embed.add_field(name="Status", value=status_text, inline=True)
+        
         embed.add_field(name="Reported By", value=matching_log['reported_by'], inline=True)
         embed.add_field(name="Date Occurred", value=matching_log['date_occurred'], inline=True)
+        embed.add_field(name="Report Date", value=matching_log['created_at'][:10], inline=True)
         
-        if matching_log.get('scammer_additional_info'):
-            embed.add_field(name="Additional Info", value=matching_log['scammer_additional_info'], inline=False)
+        if matching_log.get('victim_additional_info'):
+            embed.add_field(name="Additional Info", value=matching_log['victim_additional_info'], inline=False)
         
         # Add evidence if available
         evidence = eval(matching_log.get('evidence', '[]')) if matching_log.get('evidence') else []
         if evidence:
-            evidence_text = "\n".join([f"• {url}" for url in evidence[:3]])
-            if len(evidence) > 3:
-                evidence_text += f"\n... and {len(evidence) - 3} more"
-            embed.add_field(name="Evidence", value=evidence_text, inline=False)
+            evidence_text = "\n".join([f"• {url}" for url in evidence[:5]])
+            if len(evidence) > 5:
+                evidence_text += f"\n... and {len(evidence) - 5} more"
+            embed.add_field(name=f"Evidence ({len(evidence)} items)", value=evidence_text, inline=False)
         
         embed.set_footer(text=f"Created: {matching_log['created_at'][:10]} | Full ID: {matching_log['id']}")
         
         # Add SI team actions if user is SI team and log is pending
-        if bot.has_si_role(interaction.user) and matching_log['status'] == 'pending':
-            embed.add_field(
-                name="SI Team Actions",
-                value=f"Use `/scam-verify {log_id}` or `/scam-reject {log_id}` to update status",
-                inline=False
-            )
+        if bot.has_si_role(interaction.user):
+            if matching_log['status'] == 'pending':
+                embed.add_field(
+                    name="SI Team Actions",
+                    value=f"Use `/scam-verify {log_id}` or `/scam-reject {log_id}` to update status\nUse `/scam-remove {log_id}` to delete this report",
+                    inline=False
+                )
+            else:
+                embed.add_field(
+                    name="SI Team Actions",
+                    value=f"Use `/scam-remove {log_id}` to delete this report",
+                    inline=False
+                )
         
         await interaction.followup.send(embed=embed)
         
@@ -490,8 +533,8 @@ async def scam_logs(
             
             field_name = f"{status_emoji} {log['scam_type']}"
             field_value = (
-                f"**ID:** `{log['id'][:8]}`\n"
-                f"**Scammer:** {log['scammer_username']}\n"
+                f"**ID:** `{log['id']}`\n"
+                f"**Victim:** {log['victim_user_id']}\n"
                 f"**Date:** {log['created_at'][:10]}"
             )
             
@@ -533,11 +576,11 @@ async def scam_verify(interaction: discord.Interaction, log_id: str):
     await interaction.response.defer()
     
     try:
-        # Find log by partial ID
+        # Find log by ID
         logs = await bot.db.get_scam_logs()
         matching_log = None
         for log in logs:
-            if log['id'].startswith(log_id):
+            if log['id'] == log_id or log['id'].startswith(log_id):
                 matching_log = log
                 break
         
@@ -564,7 +607,7 @@ async def scam_verify(interaction: discord.Interaction, log_id: str):
                 description=f"Report #{log_id} has been verified and is now public",
                 color=0x00ff00
             )
-            embed.add_field(name="Scammer", value=matching_log['scammer_username'], inline=True)
+            embed.add_field(name="Victim ID", value=matching_log['victim_user_id'], inline=True)
             embed.add_field(name="Type", value=matching_log['scam_type'], inline=True)
             embed.add_field(name="Verified By", value=f"{interaction.user.mention} ({si_role})", inline=True)
             embed.set_footer(text=f"Report ID: {matching_log['id']}")
@@ -611,11 +654,11 @@ async def scam_reject(interaction: discord.Interaction, log_id: str):
     await interaction.response.defer()
     
     try:
-        # Find log by partial ID
+        # Find log by ID
         logs = await bot.db.get_scam_logs()
         matching_log = None
         for log in logs:
-            if log['id'].startswith(log_id):
+            if log['id'] == log_id or log['id'].startswith(log_id):
                 matching_log = log
                 break
         
@@ -642,7 +685,7 @@ async def scam_reject(interaction: discord.Interaction, log_id: str):
                 description=f"Report #{log_id} has been rejected",
                 color=0xff0000
             )
-            embed.add_field(name="Scammer", value=matching_log['scammer_username'], inline=True)
+            embed.add_field(name="Victim ID", value=matching_log['victim_user_id'], inline=True)
             embed.add_field(name="Type", value=matching_log['scam_type'], inline=True)
             embed.add_field(name="Rejected By", value=f"{interaction.user.mention} ({si_role})", inline=True)
             embed.set_footer(text=f"Report ID: {matching_log['id']}")
@@ -673,6 +716,77 @@ async def scam_reject(interaction: discord.Interaction, log_id: str):
     except Exception as e:
         logger.error(f"Error rejecting scam report: {e}")
         await interaction.followup.send(f"❌ Failed to reject scam report: {str(e)}", ephemeral=True)
+
+@discord.app_commands.command(name="scam-remove", description="Remove a scam report from database and website (SI TEAM ONLY)")
+@discord.app_commands.describe(log_id="The ID of the scam log to remove")
+async def scam_remove(interaction: discord.Interaction, log_id: str):
+    """Remove a scam report - SI TEAM ONLY"""
+    # Check SI role
+    if not bot.has_si_role(interaction.user):
+        await interaction.response.send_message(
+            "❌ You don't have permission to use this command. Only SI team members can remove scam reports.",
+            ephemeral=True
+        )
+        return
+    
+    await interaction.response.defer()
+    
+    try:
+        # Find log by ID
+        logs = await bot.db.get_scam_logs()
+        matching_log = None
+        for log in logs:
+            if log['id'] == log_id or log['id'].startswith(log_id):
+                matching_log = log
+                break
+        
+        if not matching_log:
+            await interaction.followup.send("❌ Scam log not found.", ephemeral=True)
+            return
+        
+        # Remove from database
+        success = await bot.db.remove_scam_log(matching_log['id'])
+        
+        if success:
+            si_role = bot.get_si_role_name(interaction.user)
+            
+            # Create success embed
+            embed = discord.Embed(
+                title="🗑️ Scam Report Removed",
+                description=f"Report #{log_id} has been permanently deleted",
+                color=0xff6600
+            )
+            embed.add_field(name="Victim ID", value=matching_log['victim_user_id'], inline=True)
+            embed.add_field(name="Type", value=matching_log['scam_type'], inline=True)
+            embed.add_field(name="Removed By", value=f"{interaction.user.mention} ({si_role})", inline=True)
+            embed.set_footer(text=f"Original Report ID: {matching_log['id']}")
+            embed.timestamp = datetime.now()
+            
+            await interaction.followup.send(embed=embed)
+            
+            # Sync with API
+            if bot.api_client:
+                async with bot.api_client as client:
+                    result = await client.remove_scam_log(matching_log['id'])
+                    if result.get('success'):
+                        logger.info(f"✅ Removal synced to API")
+                    else:
+                        logger.warning(f"❌ Failed to sync removal to API: {result.get('error')}")
+            
+            # Log activity
+            await bot.db.log_bot_activity(
+                str(interaction.user.id),
+                str(interaction.user),
+                'scam-remove',
+                f"log_id: {log_id}",
+                True
+            )
+        else:
+            await interaction.followup.send("❌ Failed to remove report.", ephemeral=True)
+        
+    except Exception as e:
+        logger.error(f"Error removing scam report: {e}")
+        await interaction.followup.send(f"❌ Failed to remove scam report: {str(e)}", ephemeral=True)
 
 @discord.app_commands.command(name="bot-stats", description="Show bot statistics (SI TEAM ONLY)")
 async def bot_stats(interaction: discord.Interaction):
