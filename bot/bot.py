@@ -111,16 +111,29 @@ class StarDevsBot(commands.Bot):
         logger.info(f'{self.user} has connected to Discord!')
         logger.info(f'Bot is in {len(self.guilds)} guilds')
         
-        # Sync slash commands
+        # Sync slash commands with better error handling
         try:
-            guild = discord.Object(id=self.config.GUILD_ID)
-            synced = await self.tree.sync(guild=guild)
-            logger.info(f'Synced {len(synced)} command(s) to guild {self.config.GUILD_ID}')
+            # Check if bot has necessary permissions
+            guild = self.get_guild(self.config.GUILD_ID)
+            if guild:
+                bot_member = guild.get_member(self.user.id)
+                if bot_member and bot_member.guild_permissions.administrator:
+                    # Sync to specific guild first (faster)
+                    guild_obj = discord.Object(id=self.config.GUILD_ID)
+                    synced = await self.tree.sync(guild=guild_obj)
+                    logger.info(f'Synced {len(synced)} command(s) to guild {self.config.GUILD_ID}')
+                    
+                    # Also sync globally (takes up to 1 hour to propagate)
+                    global_synced = await self.tree.sync()
+                    logger.info(f'Synced {len(global_synced)} command(s) globally')
+                else:
+                    logger.warning("Bot lacks administrator permissions. Some features may not work properly.")
+            else:
+                logger.error(f"Could not find guild with ID {self.config.GUILD_ID}")
             
-            # Also sync globally (takes up to 1 hour to propagate)
-            global_synced = await self.tree.sync()
-            logger.info(f'Synced {len(global_synced)} command(s) globally')
-            
+        except discord.Forbidden as e:
+            logger.error(f'Missing permissions to sync commands: {e}')
+            logger.error("Please ensure the bot has 'applications.commands' scope and proper permissions")
         except Exception as e:
             logger.error(f'Failed to sync commands: {e}')
     
@@ -175,25 +188,30 @@ class StarDevsBot(commands.Bot):
             # Sync each log with API
             async with self.api_client as client:
                 for log in recent_logs:
-                    # Convert database format to API format
-                    api_data = {
-                        'reportedBy': log['reported_by'],
-                        'reporterUsername': self.extract_username_for_id_from_string(log['reported_by']),
-                        'victimUserId': log['victim_user_id'],
-                        'victimAdditionalInfo': log.get('victim_additional_info'),
-                        'scamType': log['scam_type'],
-                        'scamDescription': log['scam_description'],
-                        'dateOccurred': log['date_occurred'],
-                        'evidence': eval(log.get('evidence', '[]')) if log.get('evidence') else []
-                    }
-                    
-                    # Check if log exists in API
-                    api_result = await client.get_scam_log(log['id'])
-                    if not api_result.get('success'):
-                        # Create in API if it doesn't exist
-                        create_result = await client.create_scam_log(api_data)
-                        if create_result.get('success'):
-                            logger.info(f"Synced log {log['id'][:8]} to API")
+                    try:
+                        # Convert database format to API format (fixed field mapping)
+                        api_data = {
+                            'reportedBy': log['reported_by'],
+                            'reporterUsername': self.extract_username_for_id_from_string(log['reported_by']),
+                            'victimUserId': log['victim_user_id'],  # Fixed: use correct field name
+                            'victimAdditionalInfo': log.get('victim_additional_info'),
+                            'scamType': log['scam_type'],
+                            'scamDescription': log['scam_description'],
+                            'dateOccurred': log['date_occurred'],
+                            'evidence': eval(log.get('evidence', '[]')) if log.get('evidence') else []
+                        }
+                        
+                        # Check if log exists in API
+                        api_result = await client.get_scam_log(log['id'])
+                        if not api_result.get('success'):
+                            # Create in API if it doesn't exist
+                            create_result = await client.create_scam_log(api_data)
+                            if create_result.get('success'):
+                                logger.info(f"Synced log {log['id'][:8]} to API")
+                            else:
+                                logger.warning(f"Failed to sync log {log['id'][:8]}: {create_result.get('error')}")
+                    except Exception as sync_error:
+                        logger.error(f"Error syncing individual log {log.get('id', 'unknown')}: {sync_error}")
             
         except Exception as e:
             logger.error(f"Error syncing with API: {e}")
