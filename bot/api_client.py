@@ -67,46 +67,56 @@ class APIClient:
     
     async def _request(self, method: str, endpoint: str, data: Dict[str, Any] = None) -> Dict[str, Any]:
         """Make an HTTP request to the API"""
-        # Create a session if it doesn't exist or is closed, but don't close it after
-        # This allows multiple requests to use the same session
-        if not self.session or self.session.closed:
-            self.session = aiohttp.ClientSession()
-        
         url = f"{self.base_url}{endpoint}"
         headers = {
             'Content-Type': 'application/json',
             'User-Agent': 'StarDevs-Discord-Bot/1.0'
         }
         
-        try:
-            # Add timeout to prevent hanging
-            timeout = aiohttp.ClientTimeout(total=10)
-            async with self.session.request(method, url, json=data, headers=headers, timeout=timeout) as response:
-                if response.content_type == 'application/json':
-                    result = await response.json()
+        # For connector closed errors, we'll retry once with a new session
+        for attempt in range(2):
+            # Create a session if it doesn't exist or is closed
+            if not self.session or self.session.closed:
+                self.session = aiohttp.ClientSession()
+            
+            try:
+                # Add timeout to prevent hanging
+                timeout = aiohttp.ClientTimeout(total=10)
+                async with self.session.request(method, url, json=data, headers=headers, timeout=timeout) as response:
+                    if response.content_type == 'application/json':
+                        result = await response.json()
+                    else:
+                        # Handle non-JSON responses (like 404 pages)
+                        text = await response.text()
+                        result = {'success': False, 'error': f'Non-JSON response: {text[:100]}...'}
+                    
+                    # Ensure we have a proper response format
+                    if 'success' not in result:
+                        result = {
+                            'success': response.status < 400,
+                            'data': result if response.status < 400 else None,
+                            'error': result if response.status >= 400 else None,
+                            'status': response.status
+                        }
+                    
+                    logger.info(f"API {method} {endpoint}: {response.status}")
+                    return result
+                    
+            except aiohttp.ClientConnectorError as e:
+                # Connection error - if this is our first attempt, try again with a new session
+                if attempt == 0:
+                    logger.warning(f"Connection error, closing session and retrying: {e}")
+                    await self.close()  # Close the session to ensure we create a new one
+                    continue
                 else:
-                    # Handle non-JSON responses (like 404 pages)
-                    text = await response.text()
-                    result = {'success': False, 'error': f'Non-JSON response: {text[:100]}...'}
-                
-                # Ensure we have a proper response format
-                if 'success' not in result:
-                    result = {
-                        'success': response.status < 400,
-                        'data': result if response.status < 400 else None,
-                        'error': result if response.status >= 400 else None,
-                        'status': response.status
-                    }
-                
-                logger.info(f"API {method} {endpoint}: {response.status}")
-                return result
-                
-        except aiohttp.ClientError as e:
-            logger.warning(f"API request failed: {e}")
-            return {'success': False, 'error': str(e), 'status': 0}
-        except Exception as e:
-            logger.warning(f"Unexpected error in API request: {e}")
-            return {'success': False, 'error': str(e), 'status': 0}
+                    logger.warning(f"API connection failed after retry: {e}")
+                    return {'success': False, 'error': str(e), 'status': 0}
+            except aiohttp.ClientError as e:
+                logger.warning(f"API request failed: {e}")
+                return {'success': False, 'error': str(e), 'status': 0}
+            except Exception as e:
+                logger.warning(f"Unexpected error in API request: {e}")
+                return {'success': False, 'error': str(e), 'status': 0}
     
     async def create_scam_log(self, log_data: Dict[str, Any]) -> Dict[str, Any]:
         """Create a new scam log via API"""
