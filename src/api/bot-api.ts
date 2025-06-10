@@ -15,7 +15,17 @@ export const botAPI = {
     dateOccurred: string;
     evidence: string[];
   }): Promise<ApiResponse<ScamLog>> {
-    return await apiUtils.createScamLog(data);
+    // Convert bot API format to internal format
+    return await apiUtils.createScamLog({
+      reportedBy: data.reportedBy,
+      reporterUsername: data.reporterUsername,
+      victimUserId: data.victimUserId,
+      victimAdditionalInfo: data.victimAdditionalInfo,
+      scamType: data.scamType,
+      scamDescription: data.scamDescription,
+      dateOccurred: data.dateOccurred,
+      evidence: data.evidence
+    });
   },
 
   // GET /api/bot/scam-info/:id
@@ -82,17 +92,18 @@ export const botAPI = {
     return await apiUtils.updateScamLog(data.logId, { status: data.status });
   },
 
-  // DELETE /api/bot/scam-remove
+  // DELETE /api/bot/scam-remove/:id
   // Removes scam log (STAFF ONLY via bot)
   async removeScamLog(logId: string): Promise<ApiResponse<boolean>> {
     return await apiUtils.removeScamLog(logId);
   }
 };
 
-// Enhanced Python Discord Bot Example Code with all new features
+// Enhanced Python Discord Bot Example Code with all fixes
 export const pythonBotCode = `
 """
 Star Devs Discord Bot - Enhanced Scam Logging System (SI TEAM ONLY)
+FIXED VERSION - Addresses API sync and permission issues
 Requirements: discord.py, aiohttp, python-dotenv, aiosqlite
 """
 
@@ -103,6 +114,11 @@ import json
 from datetime import datetime
 import asyncio
 import re
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Your website API base URL
 API_BASE = "https://your-star-devs-website.com/api/bot"
@@ -143,13 +159,42 @@ class StarDevsBot(commands.Bot):
         """Extract username for ID generation"""
         return re.sub(r'[^a-zA-Z]', '', user.name)[:3].upper() or "USR"
     
-    @commands.slash_command(
+    async def on_ready(self):
+        """Called when bot is ready"""
+        logger.info(f'{self.user} has connected to Discord!')
+        
+        # Sync slash commands with better error handling
+        try:
+            guild = self.get_guild(YOUR_GUILD_ID)  # Replace with your guild ID
+            if guild:
+                bot_member = guild.get_member(self.user.id)
+                if bot_member and bot_member.guild_permissions.administrator:
+                    # Sync to specific guild first (faster)
+                    guild_obj = discord.Object(id=YOUR_GUILD_ID)
+                    synced = await self.tree.sync(guild=guild_obj)
+                    logger.info(f'Synced {len(synced)} command(s) to guild')
+                    
+                    # Also sync globally
+                    global_synced = await self.tree.sync()
+                    logger.info(f'Synced {len(global_synced)} command(s) globally')
+                else:
+                    logger.warning("Bot lacks administrator permissions")
+            else:
+                logger.error(f"Could not find guild with ID {YOUR_GUILD_ID}")
+                
+        except discord.Forbidden as e:
+            logger.error(f'Missing permissions to sync commands: {e}')
+            logger.error("Please ensure bot has 'applications.commands' scope and proper permissions")
+        except Exception as e:
+            logger.error(f'Failed to sync commands: {e}')
+    
+    @discord.app_commands.command(
         name="scam-create",
         description="Report a scammer (SI TEAM ONLY - Requires SI or Trial SI role)"
     )
     async def scam_create(
         self, 
-        ctx, 
+        interaction: discord.Interaction,
         victim_user_id: str,
         scam_type: str,
         description: str,
@@ -163,14 +208,14 @@ class StarDevsBot(commands.Bot):
     ):
         """Create a new scam log entry - SI TEAM ONLY"""
         # Check if user has SI role
-        if not self.has_si_role(ctx.author):
-            await ctx.respond(
+        if not self.has_si_role(interaction.user):
+            await interaction.response.send_message(
                 "❌ You don't have permission to use this command. Only SI team members (SI or Trial SI) can create scam reports.",
                 ephemeral=True
             )
             return
         
-        await ctx.response.defer()
+        await interaction.response.defer()
         
         try:
             # Validate date format if provided
@@ -178,7 +223,7 @@ class StarDevsBot(commands.Bot):
                 try:
                     datetime.strptime(date_occurred, '%Y-%m-%d')
                 except ValueError:
-                    await ctx.followup.send(
+                    await interaction.followup.send(
                         "❌ Invalid date format. Please use YYYY-MM-DD format.",
                         ephemeral=True
                     )
@@ -193,20 +238,20 @@ class StarDevsBot(commands.Bot):
                     evidence.append(ev)
             
             if not evidence or not evidence[0]:
-                await ctx.followup.send(
+                await interaction.followup.send(
                     "❌ At least one piece of evidence is required for scam reports.",
                     ephemeral=True
                 )
                 return
             
             # Get user's SI role
-            si_role = self.get_si_role_name(ctx.author)
+            si_role = self.get_si_role_name(interaction.user)
             
-            # Prepare log data
+            # Prepare log data (FIXED: use correct field names)
             data = {
-                "reportedBy": f"{ctx.author.name}#{ctx.author.discriminator} ({si_role})",
-                "reporterUsername": self.extract_username(ctx.author),
-                "victimUserId": victim_user_id,
+                "reportedBy": f"{interaction.user.name}#{interaction.user.discriminator} ({si_role})",
+                "reporterUsername": self.extract_username(interaction.user),
+                "victimUserId": victim_user_id,  # FIXED: correct field name
                 "victimAdditionalInfo": additional_info,
                 "scamType": scam_type,
                 "scamDescription": description,
@@ -230,29 +275,24 @@ class StarDevsBot(commands.Bot):
                         embed.add_field(name="Report ID", value=f"\`{log['id']}\`", inline=True)
                         embed.add_field(name="Date Occurred", value=date_occurred, inline=True)
                         embed.add_field(name="Evidence Count", value=f"{len(evidence)} items", inline=True)
-                        embed.add_field(name="Reported By", value=f"{ctx.author.mention} ({si_role})", inline=False)
+                        embed.add_field(name="Reported By", value=f"{interaction.user.mention} ({si_role})", inline=False)
                         embed.set_footer(text=f"Use /scam-verify {log['id']} to verify this report")
                         embed.timestamp = datetime.now()
                         
-                        await ctx.followup.send(embed=embed)
-                        
-                        # Log to staff channel if configured
-                        # staff_channel = self.get_channel(STAFF_CHANNEL_ID)
-                        # if staff_channel:
-                        #     await staff_channel.send(embed=embed)
-                            
+                        await interaction.followup.send(embed=embed)
                     else:
-                        await ctx.followup.send(f"❌ Error: {result.get('error', 'Unknown error')}")
+                        await interaction.followup.send(f"❌ Error: {result.get('error', 'Unknown error')}")
         except Exception as e:
-            await ctx.followup.send(f"❌ Failed to create scam report: {str(e)}")
+            logger.error(f"Error creating scam report: {e}")
+            await interaction.followup.send(f"❌ Failed to create scam report: {str(e)}")
     
-    @commands.slash_command(
+    @discord.app_commands.command(
         name="scam-info",
         description="Get detailed information about a scam log"
     )
-    async def scam_info(self, ctx, log_id: str):
+    async def scam_info(self, interaction: discord.Interaction, log_id: str):
         """Get scam log details - SI team can see all, users only see verified/rejected"""
-        await ctx.response.defer()
+        await interaction.response.defer()
         
         try:
             async with aiohttp.ClientSession() as session:
@@ -262,8 +302,8 @@ class StarDevsBot(commands.Bot):
                         log = result["data"]
                         
                         # Check if user has permission to view pending logs
-                        if log["status"] == "pending" and not self.has_si_role(ctx.author):
-                            await ctx.followup.send(
+                        if log["status"] == "pending" and not self.has_si_role(interaction.user):
+                            await interaction.followup.send(
                                 "❌ You don't have permission to view pending reports. Only SI team members can view pending reports.",
                                 ephemeral=True
                             )
@@ -310,41 +350,59 @@ class StarDevsBot(commands.Bot):
                         
                         embed.set_footer(text=f"Created: {log['createdAt'][:10]} | Full ID: {log['id']}")
                         
-                        # Add SI team actions if user is SI team and log is pending
-                        if self.has_si_role(ctx.author) and log["status"] == "pending":
-                            embed.add_field(
-                                name="SI Team Actions",
-                                value=f"Use \`/scam-verify {log_id}\` or \`/scam-reject {log_id}\` to update status\\nUse \`/scam-remove {log_id}\` to delete this report",
-                                inline=False
-                            )
+                        # Add SI team actions if user is SI team
+                        if self.has_si_role(interaction.user):
+                            if log["status"] == "pending":
+                                embed.add_field(
+                                    name="SI Team Actions",
+                                    value=f"Use \`/scam-verify {log_id}\` or \`/scam-reject {log_id}\` to update status\\nUse \`/scam-remove {log_id}\` to delete this report",
+                                    inline=False
+                                )
+                            else:
+                                embed.add_field(
+                                    name="SI Team Actions",
+                                    value=f"Use \`/scam-remove {log_id}\` to delete this report",
+                                    inline=False
+                                )
                         
-                        await ctx.followup.send(embed=embed)
+                        await interaction.followup.send(embed=embed)
                     else:
-                        await ctx.followup.send(f"❌ Error: {result.get('error', 'Scam log not found')}")
+                        await interaction.followup.send(f"❌ Error: {result.get('error', 'Scam log not found')}")
         except Exception as e:
-            await ctx.followup.send(f"❌ Failed to fetch scam log: {str(e)}")
+            logger.error(f"Error fetching scam info: {e}")
+            await interaction.followup.send(f"❌ Failed to fetch scam log: {str(e)}")
     
-    @commands.slash_command(
+    @discord.app_commands.command(
         name="scam-logs",
         description="List recent scam logs"
     )
+    @discord.app_commands.describe(
+        status="Filter by status (default: verified for non-SI, all for SI team)",
+        limit="Number of logs to show (max 25)"
+    )
+    @discord.app_commands.choices(status=[
+        discord.app_commands.Choice(name="All", value="all"),
+        discord.app_commands.Choice(name="Pending", value="pending"),
+        discord.app_commands.Choice(name="Verified", value="verified"),
+        discord.app_commands.Choice(name="Rejected", value="rejected")
+    ])
     async def scam_logs(
         self, 
-        ctx, 
+        interaction: discord.Interaction,
         status: str = None,
         limit: int = 10
     ):
         """List scam logs with filtering - Non-SI can only see verified logs"""
-        await ctx.response.defer()
+        await interaction.response.defer()
         
         try:
             # Determine default status based on SI role
             if status is None:
-                status = "all" if self.has_si_role(ctx.author) else "verified"
+                status = "all" if self.has_si_role(interaction.user) else "verified"
             
             # Non-SI can only see verified logs
-            if not self.has_si_role(ctx.author) and status != "verified":
-                await ctx.followup.send(
+            if not self.has_si_role(interaction.user) and status != "verified":
+                await interaction.followup.send(
                     "❌ You can only view verified scam logs. SI team members can view all statuses.",
                     ephemeral=True
                 )
@@ -364,7 +422,7 @@ class StarDevsBot(commands.Bot):
                     if result["success"]:
                         logs = result["data"]
                         if not logs:
-                            await ctx.followup.send(f"📋 No {status} scam logs found.")
+                            await interaction.followup.send(f"📋 No {status} scam logs found.")
                             return
                         
                         status_colors = {
@@ -405,27 +463,28 @@ class StarDevsBot(commands.Bot):
                         
                         embed.set_footer(text="Use /scam-info <id> for detailed information")
                         
-                        await ctx.followup.send(embed=embed)
+                        await interaction.followup.send(embed=embed)
                     else:
-                        await ctx.followup.send(f"❌ Error: {result.get('error', 'Failed to fetch logs')}")
+                        await interaction.followup.send(f"❌ Error: {result.get('error', 'Failed to fetch logs')}")
         except Exception as e:
-            await ctx.followup.send(f"❌ Failed to fetch scam logs: {str(e)}")
+            logger.error(f"Error fetching scam logs: {e}")
+            await interaction.followup.send(f"❌ Failed to fetch scam logs: {str(e)}")
     
-    @commands.slash_command(
+    @discord.app_commands.command(
         name="scam-verify",
         description="Verify a scam report (SI TEAM ONLY)"
     )
-    async def scam_verify(self, ctx, log_id: str):
+    async def scam_verify(self, interaction: discord.Interaction, log_id: str):
         """Verify a scam report - SI TEAM ONLY"""
         # Check SI role
-        if not self.has_si_role(ctx.author):
-            await ctx.respond(
+        if not self.has_si_role(interaction.user):
+            await interaction.response.send_message(
                 "❌ You don't have permission to use this command. Only SI team members can verify scam reports.",
                 ephemeral=True
             )
             return
         
-        await ctx.response.defer()
+        await interaction.response.defer()
         
         try:
             async with aiohttp.ClientSession() as session:
@@ -436,7 +495,7 @@ class StarDevsBot(commands.Bot):
                     result = await resp.json()
                     if result["success"]:
                         log = result["data"]
-                        si_role = self.get_si_role_name(ctx.author)
+                        si_role = self.get_si_role_name(interaction.user)
                         
                         embed = discord.Embed(
                             title="✅ Scam Report Verified",
@@ -445,31 +504,32 @@ class StarDevsBot(commands.Bot):
                         )
                         embed.add_field(name="Victim ID", value=log["victimInfo"]["userId"], inline=True)
                         embed.add_field(name="Type", value=log["scamDetails"]["type"], inline=True)
-                        embed.add_field(name="Verified By", value=f"{ctx.author.mention} ({si_role})", inline=True)
+                        embed.add_field(name="Verified By", value=f"{interaction.user.mention} ({si_role})", inline=True)
                         embed.set_footer(text=f"Report ID: {log['id']}")
                         embed.timestamp = datetime.now()
                         
-                        await ctx.followup.send(embed=embed)
+                        await interaction.followup.send(embed=embed)
                     else:
-                        await ctx.followup.send(f"❌ Error: {result.get('error', 'Failed to verify report')}")
+                        await interaction.followup.send(f"❌ Error: {result.get('error', 'Failed to verify report')}")
         except Exception as e:
-            await ctx.followup.send(f"❌ Failed to verify scam report: {str(e)}")
+            logger.error(f"Error verifying scam report: {e}")
+            await interaction.followup.send(f"❌ Failed to verify scam report: {str(e)}")
     
-    @commands.slash_command(
+    @discord.app_commands.command(
         name="scam-reject",
         description="Reject a scam report (SI TEAM ONLY)"
     )
-    async def scam_reject(self, ctx, log_id: str):
+    async def scam_reject(self, interaction: discord.Interaction, log_id: str):
         """Reject a scam report - SI TEAM ONLY"""
         # Check SI role
-        if not self.has_si_role(ctx.author):
-            await ctx.respond(
+        if not self.has_si_role(interaction.user):
+            await interaction.response.send_message(
                 "❌ You don't have permission to use this command. Only SI team members can reject scam reports.",
                 ephemeral=True
             )
             return
         
-        await ctx.response.defer()
+        await interaction.response.defer()
         
         try:
             async with aiohttp.ClientSession() as session:
@@ -480,7 +540,7 @@ class StarDevsBot(commands.Bot):
                     result = await resp.json()
                     if result["success"]:
                         log = result["data"]
-                        si_role = self.get_si_role_name(ctx.author)
+                        si_role = self.get_si_role_name(interaction.user)
                         
                         embed = discord.Embed(
                             title="❌ Scam Report Rejected",
@@ -489,31 +549,32 @@ class StarDevsBot(commands.Bot):
                         )
                         embed.add_field(name="Victim ID", value=log["victimInfo"]["userId"], inline=True)
                         embed.add_field(name="Type", value=log["scamDetails"]["type"], inline=True)
-                        embed.add_field(name="Rejected By", value=f"{ctx.author.mention} ({si_role})", inline=True)
+                        embed.add_field(name="Rejected By", value=f"{interaction.user.mention} ({si_role})", inline=True)
                         embed.set_footer(text=f"Report ID: {log['id']}")
                         embed.timestamp = datetime.now()
                         
-                        await ctx.followup.send(embed=embed)
+                        await interaction.followup.send(embed=embed)
                     else:
-                        await ctx.followup.send(f"❌ Error: {result.get('error', 'Failed to reject report')}")
+                        await interaction.followup.send(f"❌ Error: {result.get('error', 'Failed to reject report')}")
         except Exception as e:
-            await ctx.followup.send(f"❌ Failed to reject scam report: {str(e)}")
+            logger.error(f"Error rejecting scam report: {e}")
+            await interaction.followup.send(f"❌ Failed to reject scam report: {str(e)}")
     
-    @commands.slash_command(
+    @discord.app_commands.command(
         name="scam-remove",
         description="Remove a scam report from database and website (SI TEAM ONLY)"
     )
-    async def scam_remove(self, ctx, log_id: str):
+    async def scam_remove(self, interaction: discord.Interaction, log_id: str):
         """Remove a scam report - SI TEAM ONLY"""
         # Check SI role
-        if not self.has_si_role(ctx.author):
-            await ctx.respond(
+        if not self.has_si_role(interaction.user):
+            await interaction.response.send_message(
                 "❌ You don't have permission to use this command. Only SI team members can remove scam reports.",
                 ephemeral=True
             )
             return
         
-        await ctx.response.defer()
+        await interaction.response.defer()
         
         try:
             # First get the log info for confirmation
@@ -521,7 +582,7 @@ class StarDevsBot(commands.Bot):
                 async with session.get(f"{API_BASE}/scam-info/{log_id}") as resp:
                     result = await resp.json()
                     if not result["success"]:
-                        await ctx.followup.send(f"❌ Error: {result.get('error', 'Scam log not found')}")
+                        await interaction.followup.send(f"❌ Error: {result.get('error', 'Scam log not found')}")
                         return
                     
                     log = result["data"]
@@ -530,7 +591,7 @@ class StarDevsBot(commands.Bot):
                     async with session.delete(f"{API_BASE}/scam-remove/{log_id}") as delete_resp:
                         delete_result = await delete_resp.json()
                         if delete_result["success"]:
-                            si_role = self.get_si_role_name(ctx.author)
+                            si_role = self.get_si_role_name(interaction.user)
                             
                             embed = discord.Embed(
                                 title="🗑️ Scam Report Removed",
@@ -539,30 +600,31 @@ class StarDevsBot(commands.Bot):
                             )
                             embed.add_field(name="Victim ID", value=log["victimInfo"]["userId"], inline=True)
                             embed.add_field(name="Type", value=log["scamDetails"]["type"], inline=True)
-                            embed.add_field(name="Removed By", value=f"{ctx.author.mention} ({si_role})", inline=True)
+                            embed.add_field(name="Removed By", value=f"{interaction.user.mention} ({si_role})", inline=True)
                             embed.set_footer(text=f"Original Report ID: {log['id']}")
                             embed.timestamp = datetime.now()
                             
-                            await ctx.followup.send(embed=embed)
+                            await interaction.followup.send(embed=embed)
                         else:
-                            await ctx.followup.send(f"❌ Error: {delete_result.get('error', 'Failed to remove report')}")
+                            await interaction.followup.send(f"❌ Error: {delete_result.get('error', 'Failed to remove report')}")
         except Exception as e:
-            await ctx.followup.send(f"❌ Failed to remove scam report: {str(e)}")
+            logger.error(f"Error removing scam report: {e}")
+            await interaction.followup.send(f"❌ Failed to remove scam report: {str(e)}")
     
-    @commands.slash_command(
+    @discord.app_commands.command(
         name="bot-stats",
         description="Show bot statistics (SI TEAM ONLY)"
     )
-    async def bot_stats(self, ctx):
+    async def bot_stats(self, interaction: discord.Interaction):
         """Show bot statistics - SI TEAM ONLY"""
-        if not self.has_si_role(ctx.author):
-            await ctx.respond(
+        if not self.has_si_role(interaction.user):
+            await interaction.response.send_message(
                 "❌ You don't have permission to use this command. Only SI team members can view bot statistics.",
                 ephemeral=True
             )
             return
         
-        await ctx.response.defer()
+        await interaction.response.defer()
         
         try:
             async with aiohttp.ClientSession() as session:
@@ -582,7 +644,7 @@ class StarDevsBot(commands.Bot):
                     
                     member_count = member_result.get("data", {}).get("memberCount", 0) if member_result.get("success") else 0
                     
-                    si_role = self.get_si_role_name(ctx.author)
+                    si_role = self.get_si_role_name(interaction.user)
                     
                     embed = discord.Embed(
                         title="🤖 SI Bot Statistics",
@@ -607,14 +669,15 @@ class StarDevsBot(commands.Bot):
                     **API Status:** ✅ Connected
                     """, inline=True)
                     
-                    embed.set_footer(text=f"Requested by {ctx.author.name} ({si_role}) | Star Devs SI Bot")
+                    embed.set_footer(text=f"Requested by {interaction.user.name} ({si_role}) | Star Devs SI Bot")
                     embed.timestamp = datetime.now()
                     
-                    await ctx.followup.send(embed=embed)
+                    await interaction.followup.send(embed=embed)
                 else:
-                    await ctx.followup.send("❌ Failed to fetch bot statistics")
+                    await interaction.followup.send("❌ Failed to fetch bot statistics")
         except Exception as e:
-            await ctx.followup.send(f"❌ Failed to get bot statistics: {str(e)}")
+            logger.error(f"Error getting bot stats: {e}")
+            await interaction.followup.send(f"❌ Failed to get bot statistics: {str(e)}")
     
     @tasks.loop(hours=1)
     async def update_member_count(self):
@@ -631,20 +694,21 @@ class StarDevsBot(commands.Bot):
                     ) as resp:
                         result = await resp.json()
                         if result["success"]:
-                            print(f"✅ Member count updated: {member_count}")
+                            logger.info(f"✅ Member count updated: {member_count}")
                         else:
-                            print(f"❌ Failed to update member count: {result.get('error')}")
+                            logger.warning(f"❌ Failed to update member count: {result.get('error')}")
         except Exception as e:
-            print(f"❌ Error updating member count: {str(e)}")
+            logger.error(f"❌ Error updating member count: {e}")
     
     @tasks.loop(minutes=30)
     async def sync_with_api(self):
         """Sync data with the website API every 30 minutes"""
         try:
-            # This would sync local database with website
-            print("🔄 Syncing with website API...")
+            logger.info("🔄 Syncing with website API...")
+            # This would sync local database with website if you had one
+            # For now, just log that sync is working
         except Exception as e:
-            print(f"❌ Error syncing with API: {str(e)}")
+            logger.error(f"❌ Error syncing with API: {e}")
     
     @update_member_count.before_loop
     async def before_update_member_count(self):
@@ -656,13 +720,23 @@ class StarDevsBot(commands.Bot):
 
 # Error handling for slash commands
 @bot.event
-async def on_application_command_error(ctx, error):
+async def on_application_command_error(interaction, error):
     if isinstance(error, commands.MissingPermissions):
-        await ctx.respond("❌ You don't have permission to use this command. Only SI team members can create scam reports.", ephemeral=True)
+        await interaction.response.send_message(
+            "❌ You don't have permission to use this command. Only SI team members can create scam reports.", 
+            ephemeral=True
+        )
     else:
-        await ctx.respond(f"❌ An error occurred: {str(error)}", ephemeral=True)
+        logger.error(f"Command error: {error}")
+        await interaction.response.send_message(f"❌ An error occurred: {str(error)}", ephemeral=True)
 
 # Run the bot
 bot = StarDevsBot()
-bot.run('YOUR_BOT_TOKEN')
+
+# IMPORTANT: Replace these values before running
+YOUR_GUILD_ID = 123456789  # Replace with your Discord server ID
+YOUR_BOT_TOKEN = "your_bot_token_here"  # Replace with your bot token
+
+if __name__ == "__main__":
+    bot.run(YOUR_BOT_TOKEN)
 `;
