@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, User, Calendar, AlertTriangle, FileText, Image, CheckCircle, XCircle, Clock } from 'lucide-react';
+import { X, User, Calendar, AlertTriangle, FileText, Image, CheckCircle, XCircle, Clock, Trash2 } from 'lucide-react';
 import { ScamLog } from '../types';
 import { apiUtils } from '../utils/api';
 
@@ -44,6 +44,18 @@ const ScamLogModal: React.FC<ScamLogModalProps> = ({ log, onClose, onUpdate }) =
     setIsUpdating(false);
   };
 
+  const handleRemove = async () => {
+    if (confirm(`Are you sure you want to permanently delete report #${log.id}? This action cannot be undone.`)) {
+      setIsUpdating(true);
+      const response = await apiUtils.removeScamLog(log.id);
+      if (response.success) {
+        onUpdate();
+        onClose();
+      }
+      setIsUpdating(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
       <div className="bg-gray-800 border border-gray-700 rounded-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
@@ -55,7 +67,7 @@ const ScamLogModal: React.FC<ScamLogModalProps> = ({ log, onClose, onUpdate }) =
             </div>
             <div>
               <h2 className="text-2xl font-bold text-white">{log.scamDetails.type}</h2>
-              <p className="text-gray-400">Report #{log.id.slice(0, 8)}</p>
+              <p className="text-gray-400">Report #{log.id}</p>
             </div>
           </div>
           
@@ -97,28 +109,32 @@ const ScamLogModal: React.FC<ScamLogModalProps> = ({ log, onClose, onUpdate }) =
                   </button>
                 </>
               )}
+              <button
+                onClick={handleRemove}
+                disabled={isUpdating}
+                className="px-4 py-2 bg-orange-600 hover:bg-orange-500 text-white rounded-lg transition-colors disabled:opacity-50 flex items-center space-x-2"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>Remove</span>
+              </button>
             </div>
           </div>
 
-          {/* Scammer Information */}
+          {/* Victim Information */}
           <div className="bg-gray-900/50 rounded-xl p-6">
             <h3 className="text-lg font-semibold text-white mb-4 flex items-center space-x-2">
               <User className="w-5 h-5" />
-              <span>Scammer Information</span>
+              <span>Victim Information</span>
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-400 mb-1">Username</label>
-                <p className="text-white bg-gray-800 px-3 py-2 rounded-lg">{log.scammerInfo.username}</p>
-              </div>
-              <div>
                 <label className="block text-sm font-medium text-gray-400 mb-1">User ID</label>
-                <p className="text-white bg-gray-800 px-3 py-2 rounded-lg font-mono text-sm">{log.scammerInfo.userId}</p>
+                <p className="text-white bg-gray-800 px-3 py-2 rounded-lg font-mono text-sm">{log.victimInfo.userId}</p>
               </div>
-              {log.scammerInfo.additionalInfo && (
+              {log.victimInfo.additionalInfo && (
                 <div className="md:col-span-2">
                   <label className="block text-sm font-medium text-gray-400 mb-1">Additional Information</label>
-                  <p className="text-white bg-gray-800 px-3 py-2 rounded-lg">{log.scammerInfo.additionalInfo}</p>
+                  <p className="text-white bg-gray-800 px-3 py-2 rounded-lg">{log.victimInfo.additionalInfo}</p>
                 </div>
               )}
             </div>
@@ -155,10 +171,10 @@ const ScamLogModal: React.FC<ScamLogModalProps> = ({ log, onClose, onUpdate }) =
                     <Image className="w-4 h-4" />
                     <span>Evidence ({log.scamDetails.evidence.length} items)</span>
                   </label>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <div className="grid grid-cols-1 gap-2">
                     {log.scamDetails.evidence.map((evidence, index) => (
                       <div key={index} className="bg-gray-800 px-3 py-2 rounded-lg">
-                        <p className="text-sm text-white truncate">{evidence}</p>
+                        <p className="text-sm text-white break-all">{evidence}</p>
                       </div>
                     ))}
                   </div>
@@ -173,7 +189,13 @@ const ScamLogModal: React.FC<ScamLogModalProps> = ({ log, onClose, onUpdate }) =
               <Calendar className="w-5 h-5" />
               <span>Timeline</span>
             </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-400 mb-1">Report Date</label>
+                <p className="text-white bg-gray-800 px-3 py-2 rounded-lg">
+                  {new Date(log.reportDate).toLocaleString()}
+                </p>
+              </div>
               <div>
                 <label className="block text-sm font-medium text-gray-400 mb-1">Created</label>
                 <p className="text-white bg-gray-800 px-3 py-2 rounded-lg">
