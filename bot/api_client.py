@@ -57,11 +57,14 @@ class APIClient:
         self._closed = True
     
     async def __aenter__(self):
-        if not self.session or self.session.closed:
-            self.session = aiohttp.ClientSession()
+        # Always start with a fresh session when used as context manager
+        if self.session and not self.session.closed:
+            await self.session.close()
+        self.session = aiohttp.ClientSession(connector=aiohttp.TCPConnector(force_close=True))
         return self
     
     async def __aexit__(self, exc_type, exc_val, exc_tb):
+        # Always close session when context ends
         if self.session and not self.session.closed:
             await self.session.close()
     
@@ -73,13 +76,21 @@ class APIClient:
             'User-Agent': 'StarDevs-Discord-Bot/1.0'
         }
         
+        # Create a fresh session for each request to avoid connector issues
+        # This is less efficient but more reliable
+        session_created = False
+        
         # For connector closed errors, we'll retry once with a new session
         for attempt in range(2):
-            # Create a session if it doesn't exist or is closed
-            if not self.session or self.session.closed:
-                self.session = aiohttp.ClientSession()
-            
             try:
+                # Always create a fresh session for each attempt
+                if self.session and not self.session.closed:
+                    await self.session.close()
+                
+                # Create a new session for this request
+                self.session = aiohttp.ClientSession(connector=aiohttp.TCPConnector(force_close=True))
+                session_created = True
+                
                 # Add timeout to prevent hanging
                 timeout = aiohttp.ClientTimeout(total=10)
                 async with self.session.request(method, url, json=data, headers=headers, timeout=timeout) as response:
@@ -102,11 +113,10 @@ class APIClient:
                     logger.info(f"API {method} {endpoint}: {response.status}")
                     return result
                     
-            except aiohttp.ClientConnectorError as e:
-                # Connection error - if this is our first attempt, try again with a new session
+            except (aiohttp.ClientConnectorError, aiohttp.ClientOSError) as e:
+                # Connection error - if this is our first attempt, try again
                 if attempt == 0:
-                    logger.warning(f"Connection error, closing session and retrying: {e}")
-                    await self.close()  # Close the session to ensure we create a new one
+                    logger.warning(f"Connection error, creating new session and retrying: {e}")
                     continue
                 else:
                     logger.warning(f"API connection failed after retry: {e}")
@@ -117,6 +127,13 @@ class APIClient:
             except Exception as e:
                 logger.warning(f"Unexpected error in API request: {e}")
                 return {'success': False, 'error': str(e), 'status': 0}
+            finally:
+                # Close the session after each request to ensure clean state
+                if session_created and self.session and not self.session.closed:
+                    try:
+                        await self.session.close()
+                    except Exception as e:
+                        logger.warning(f"Error closing session: {e}")
     
     async def create_scam_log(self, log_data: Dict[str, Any]) -> Dict[str, Any]:
         """Create a new scam log via API"""
