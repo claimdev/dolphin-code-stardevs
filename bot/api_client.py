@@ -2,28 +2,75 @@ import aiohttp
 import json
 from typing import Dict, Any, Optional
 import logging
+import asyncio
+import weakref
+import sys
+import atexit
 
 logger = logging.getLogger(__name__)
 
+# Helper function to close all sessions at exit
+async def _cleanup_sessions():
+    tasks = []
+    for ref in APIClient._instances:
+        client = ref()
+        if client is not None and not client._closed:
+            tasks.append(client.close())
+    if tasks:
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+# Register the cleanup function to run at exit
+def _sync_cleanup():
+    try:
+        if not asyncio.get_event_loop().is_closed():
+            asyncio.get_event_loop().run_until_complete(_cleanup_sessions())
+    except Exception as e:
+        logger.error(f"Error during session cleanup: {e}")
+
+# Register cleanup with atexit
+atexit.register(_sync_cleanup)
+
+# Also set custom excepthook to ensure cleanup on crashes
+_original_excepthook = sys.excepthook
+def _custom_excepthook(exc_type, exc_value, traceback):
+    _sync_cleanup()
+    _original_excepthook(exc_type, exc_value, traceback)
+sys.excepthook = _custom_excepthook
+
 class APIClient:
+    # Keep track of all active clients for cleanup (using weak references)
+    _instances = []
+    
     def __init__(self, base_url: str):
         self.base_url = base_url.rstrip('/')
         self.session = None
+        self._closed = False
+        
+        # Register this instance for cleanup using a weak reference
+        APIClient._instances.append(weakref.ref(self))
+        
+    async def close(self):
+        """Explicitly close the client session"""
+        if self.session and not self.session.closed:
+            await self.session.close()
+            self.session = None
+        self._closed = True
     
     async def __aenter__(self):
-        self.session = aiohttp.ClientSession()
+        if not self.session or self.session.closed:
+            self.session = aiohttp.ClientSession()
         return self
     
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        if self.session:
+        if self.session and not self.session.closed:
             await self.session.close()
     
     async def _request(self, method: str, endpoint: str, data: Dict[str, Any] = None) -> Dict[str, Any]:
         """Make an HTTP request to the API"""
-        close_after = False
+        # Create a session if it doesn't exist or is closed, but don't close it after
+        # This allows multiple requests to use the same session
         if not self.session or self.session.closed:
             self.session = aiohttp.ClientSession()
-            close_after = True
         
         url = f"{self.base_url}{endpoint}"
         headers = {
@@ -60,10 +107,6 @@ class APIClient:
         except Exception as e:
             logger.warning(f"Unexpected error in API request: {e}")
             return {'success': False, 'error': str(e), 'status': 0}
-        finally:
-            # Close the session if we created it in this method
-            if close_after and self.session and not self.session.closed:
-                await self.session.close()
     
     async def create_scam_log(self, log_data: Dict[str, Any]) -> Dict[str, Any]:
         """Create a new scam log via API"""
