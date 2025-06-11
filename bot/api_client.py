@@ -2,165 +2,87 @@ import aiohttp
 import json
 from typing import Dict, Any, Optional
 import logging
-import asyncio
-import weakref
-import sys
-import atexit
 
 logger = logging.getLogger(__name__)
 
-# Helper function to close all sessions at exit
-async def _cleanup_sessions():
-    tasks = []
-    for ref in APIClient._instances:
-        client = ref()
-        if client is not None and not client._closed:
-            tasks.append(client.close())
-    if tasks:
-        await asyncio.gather(*tasks, return_exceptions=True)
-
-# Register the cleanup function to run at exit
-def _sync_cleanup():
-    try:
-        if not asyncio.get_event_loop().is_closed():
-            asyncio.get_event_loop().run_until_complete(_cleanup_sessions())
-    except Exception as e:
-        logger.error(f"Error during session cleanup: {e}")
-
-# Register cleanup with atexit
-atexit.register(_sync_cleanup)
-
-# Also set custom excepthook to ensure cleanup on crashes
-_original_excepthook = sys.excepthook
-def _custom_excepthook(exc_type, exc_value, traceback):
-    _sync_cleanup()
-    _original_excepthook(exc_type, exc_value, traceback)
-sys.excepthook = _custom_excepthook
-
 class APIClient:
-    # Keep track of all active clients for cleanup (using weak references)
-    _instances = []
-    
     def __init__(self, base_url: str):
         self.base_url = base_url.rstrip('/')
         self.session = None
-        self._closed = False
-        
-        # Register this instance for cleanup using a weak reference
-        APIClient._instances.append(weakref.ref(self))
-        
-    async def close(self):
-        """Explicitly close the client session"""
-        if self.session and not self.session.closed:
-            await self.session.close()
-            self.session = None
-        self._closed = True
     
     async def __aenter__(self):
-        # Always start with a fresh session when used as context manager
-        if self.session and not self.session.closed:
-            await self.session.close()
-        self.session = aiohttp.ClientSession(connector=aiohttp.TCPConnector(force_close=True))
+        self.session = aiohttp.ClientSession()
         return self
     
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        # Always close session when context ends
-        if self.session and not self.session.closed:
+        if self.session:
             await self.session.close()
     
     async def _request(self, method: str, endpoint: str, data: Dict[str, Any] = None) -> Dict[str, Any]:
         """Make an HTTP request to the API"""
+        if not self.session:
+            self.session = aiohttp.ClientSession()
+        
         url = f"{self.base_url}{endpoint}"
         headers = {
             'Content-Type': 'application/json',
             'User-Agent': 'StarDevs-Discord-Bot/1.0'
         }
         
-        # Create a fresh session for each request to avoid connector issues
-        # This is less efficient but more reliable
-        session_created = False
-        
-        # For connector closed errors, we'll retry once with a new session
-        for attempt in range(2):
-            try:
-                # Always create a fresh session for each attempt
-                if self.session and not self.session.closed:
-                    await self.session.close()
-                
-                # Create a new session for this request
-                self.session = aiohttp.ClientSession(connector=aiohttp.TCPConnector(force_close=True))
-                session_created = True
-                
-                # Add timeout to prevent hanging
-                timeout = aiohttp.ClientTimeout(total=10)
-                async with self.session.request(method, url, json=data, headers=headers, timeout=timeout) as response:
-                    if response.content_type == 'application/json':
-                        result = await response.json()
-                    else:
-                        # Handle non-JSON responses (like 404 pages)
-                        text = await response.text()
-                        result = {'success': False, 'error': f'Non-JSON response: {text[:100]}...'}
-                    
-                    # Ensure we have a proper response format
-                    if 'success' not in result:
-                        result = {
-                            'success': response.status < 400,
-                            'data': result if response.status < 400 else None,
-                            'error': result if response.status >= 400 else None,
-                            'status': response.status
-                        }
-                    
-                    logger.info(f"API {method} {endpoint}: {response.status}")
-                    return result
-                    
-            except (aiohttp.ClientConnectorError, aiohttp.ClientOSError) as e:
-                # Connection error - if this is our first attempt, try again
-                if attempt == 0:
-                    logger.warning(f"Connection error, creating new session and retrying: {e}")
-                    continue
+        try:
+            async with self.session.request(method, url, json=data, headers=headers) as response:
+                if response.content_type == 'application/json':
+                    result = await response.json()
                 else:
-                    logger.warning(f"API connection failed after retry: {e}")
-                    return {'success': False, 'error': str(e), 'status': 0}
-            except aiohttp.ClientError as e:
-                logger.warning(f"API request failed: {e}")
-                return {'success': False, 'error': str(e), 'status': 0}
-            except Exception as e:
-                logger.warning(f"Unexpected error in API request: {e}")
-                return {'success': False, 'error': str(e), 'status': 0}
-            finally:
-                # Close the session after each request to ensure clean state
-                if session_created and self.session and not self.session.closed:
-                    try:
-                        await self.session.close()
-                    except Exception as e:
-                        logger.warning(f"Error closing session: {e}")
+                    # Handle non-JSON responses
+                    text = await response.text()
+                    result = {'success': False, 'error': f'Non-JSON response: {text}'}
+                
+                # Ensure we have a proper response format
+                if 'success' not in result:
+                    result = {
+                        'success': response.status < 400,
+                        'data': result if response.status < 400 else None,
+                        'error': result if response.status >= 400 else None,
+                        'status': response.status
+                    }
+                
+                logger.info(f"API {method} {endpoint}: {response.status}")
+                return result
+                
+        except aiohttp.ClientError as e:
+            logger.error(f"API request failed: {e}")
+            return {'success': False, 'error': str(e), 'status': 0}
+        except Exception as e:
+            logger.error(f"Unexpected error in API request: {e}")
+            return {'success': False, 'error': str(e), 'status': 0}
     
     async def create_scam_log(self, log_data: Dict[str, Any]) -> Dict[str, Any]:
         """Create a new scam log via API"""
-        return await self._request('POST', '/scam-create', log_data)
+        return await self._request('POST', '/api/bot/scam-create', log_data)
     
     async def get_scam_log(self, log_id: str) -> Dict[str, Any]:
         """Get a specific scam log via API"""
-        return await self._request('GET', f'/scam-info/{log_id}')
+        return await self._request('GET', f'/api/bot/scam-info/{log_id}')
     
     async def get_scam_logs(self, status: str = 'all', limit: int = 10) -> Dict[str, Any]:
         """Get scam logs via API"""
         params = {'status': status, 'limit': limit}
-        endpoint = f"/scam-logs?{'&'.join(f'{k}={v}' for k, v in params.items())}"
+        endpoint = f"/api/bot/scam-logs?{'&'.join(f'{k}={v}' for k, v in params.items())}"
         return await self._request('GET', endpoint)
     
     async def update_scam_log_status(self, log_id: str, status: str) -> Dict[str, Any]:
         """Update scam log status via API"""
-        return await self._request('POST', f'/update-status', {'logId': log_id, 'status': status})
+        return await self._request('POST', f'/api/bot/update-status', {'logId': log_id, 'status': status})
     
     async def remove_scam_log(self, log_id: str) -> Dict[str, Any]:
         """Remove scam log via API"""
-        return await self._request('DELETE', f'/scam-remove/{log_id}')
+        return await self._request('DELETE', f'/api/bot/scam-remove/{log_id}')
     
     async def update_member_count(self, member_count: int) -> Dict[str, Any]:
         """Update Discord member count via API"""
-        return await self._request('POST', '/update-member-count', {'memberCount': member_count})
+        return await self._request('POST', '/api/bot/update-member-count', {'memberCount': member_count})
     
     async def get_member_count(self) -> Dict[str, Any]:
         """Get current member count via API"""
-        return await self._request('GET', '/member-count')
+        return await self._request('GET', '/api/bot/member-count')
