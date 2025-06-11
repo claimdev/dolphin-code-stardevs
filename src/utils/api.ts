@@ -28,13 +28,13 @@ export const apiUtils = {
     }
   },
 
-  // Scam Logs API
+  // Scam Logs API - FIXED to match new bot data structure
   async createScamLog(logData: {
     reportedBy: string;
     reporterUsername: string;
     victimUserId: string;
     victimAdditionalInfo?: string;
-    scammerUserId: string; // NEW: Scammer ID field
+    scammerUserId: string; // FIXED: Now using scammerUserId instead of scammerUsername
     scammerAdditionalInfo?: string;
     scamType: string;
     scamDescription: string;
@@ -55,7 +55,7 @@ export const apiUtils = {
           additionalInfo: logData.victimAdditionalInfo
         },
         scammerInfo: {
-          userId: logData.scammerUserId,
+          userId: logData.scammerUserId, // FIXED: Use scammerUserId
           additionalInfo: logData.scammerAdditionalInfo
         },
         scamDetails: {
