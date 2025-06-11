@@ -34,6 +34,8 @@ export const apiUtils = {
     reporterUsername: string;
     victimUserId: string;
     victimAdditionalInfo?: string;
+    scammerUserId: string; // NEW: Scammer ID field
+    scammerAdditionalInfo?: string;
     scamType: string;
     scamDescription: string;
     evidence: string[];
@@ -51,6 +53,10 @@ export const apiUtils = {
         victimInfo: {
           userId: logData.victimUserId,
           additionalInfo: logData.victimAdditionalInfo
+        },
+        scammerInfo: {
+          userId: logData.scammerUserId,
+          additionalInfo: logData.scammerAdditionalInfo
         },
         scamDetails: {
           type: logData.scamType,
