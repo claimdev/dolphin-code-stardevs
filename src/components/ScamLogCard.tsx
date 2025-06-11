@@ -1,5 +1,5 @@
 import React from 'react';
-import { Clock, User, AlertTriangle, CheckCircle, XCircle } from 'lucide-react';
+import { Clock, User, AlertTriangle, CheckCircle, XCircle, Shield } from 'lucide-react';
 import { ScamLog } from '../types';
 
 interface ScamLogCardProps {
@@ -57,6 +57,11 @@ const ScamLogCard: React.FC<ScamLogCardProps> = ({ log, onClick }) => {
           <User className="w-4 h-4" />
           <span>Victim ID: {log.victimInfo.userId}</span>
         </div>
+
+        <div className="flex items-center space-x-2 text-sm text-gray-300">
+          <Shield className="w-4 h-4" />
+          <span>Scammer ID: {log.scammerInfo.userId}</span>
+        </div>
         
         <p className="text-gray-400 text-sm line-clamp-2">
           {log.scamDetails.description}
@@ -80,5 +85,7 @@ const ScamLogCard: React.FC<ScamLogCardProps> = ({ log, onClick }) => {
     </div>
   );
 };
+
+export default ScamLogCard;
 
 export default ScamLogCard;
