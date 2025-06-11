@@ -14,13 +14,15 @@ class Database:
     async def init_db(self):
         """Initialize the database with required tables"""
         async with aiosqlite.connect(self.db_path) as db:
-            # Scam logs table - FIXED schema with correct field names
+            # Scam logs table - UPDATED schema with scammer info
             await db.execute('''
                 CREATE TABLE IF NOT EXISTS scam_logs (
                     id TEXT PRIMARY KEY,
                     reported_by TEXT NOT NULL,
                     victim_user_id TEXT NOT NULL,
                     victim_additional_info TEXT,
+                    scammer_user_id TEXT NOT NULL,
+                    scammer_additional_info TEXT,
                     scam_type TEXT NOT NULL,
                     scam_description TEXT NOT NULL,
                     evidence TEXT NOT NULL, -- JSON array of evidence URLs (required)
@@ -30,23 +32,6 @@ class Database:
                     updated_at TEXT NOT NULL
                 )
             ''')
-            
-            # Check if we need to migrate old schema
-            async with db.execute("PRAGMA table_info(scam_logs)") as cursor:
-                columns = await cursor.fetchall()
-                column_names = [col[1] for col in columns]
-                
-                # Add missing columns if they don't exist
-                if 'victim_user_id' not in column_names:
-                    # If old schema exists, migrate it
-                    if 'scammer_user_id' in column_names:
-                        await db.execute('ALTER TABLE scam_logs ADD COLUMN victim_user_id TEXT')
-                        await db.execute('UPDATE scam_logs SET victim_user_id = scammer_user_id WHERE victim_user_id IS NULL')
-                
-                if 'victim_additional_info' not in column_names:
-                    if 'scammer_additional_info' in column_names:
-                        await db.execute('ALTER TABLE scam_logs ADD COLUMN victim_additional_info TEXT')
-                        await db.execute('UPDATE scam_logs SET victim_additional_info = scammer_additional_info WHERE victim_additional_info IS NULL')
             
             # Discord stats table
             await db.execute('''
@@ -120,14 +105,17 @@ class Database:
             await db.execute('''
                 INSERT INTO scam_logs (
                     id, reported_by, victim_user_id, victim_additional_info,
+                    scammer_user_id, scammer_additional_info,
                     scam_type, scam_description, evidence, date_occurred,
                     status, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 log_id,
                 log_data['reported_by'],
                 log_data['victim_user_id'],
                 log_data.get('victim_additional_info'),
+                log_data['scammer_user_id'],  # NEW: Scammer ID
+                log_data.get('scammer_additional_info'),  # NEW: Scammer additional info
                 log_data['scam_type'],
                 log_data['scam_description'],
                 json.dumps(log_data.get('evidence', [])),
