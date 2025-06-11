@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { MessageCircle, Code, GraduationCap, Users, Github, Twitter, MessageSquare } from 'lucide-react';
-import StatsCard from '../components/StatsCard';
 import { DiscordStats } from '../types';
 import { apiUtils } from '../utils/api';
 
@@ -23,6 +22,10 @@ const Home: React.FC = () => {
     loadStats();
   }, []);
 
+  const handleJoinDiscord = () => {
+    window.open('https://discord.gg/kDVhe4zkUB', '_blank');
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900">
       <div className="pt-24 pb-16 px-4 sm:px-6 lg:px-8">
@@ -31,7 +34,7 @@ const Home: React.FC = () => {
           <div className="mb-12">
             <div className="inline-block mb-8">
               <img 
-                src="https://i.imgur.com/srcQZEw.png" 
+                src="/logo.png" 
                 alt="Star Devs Logo" 
                 className="w-24 h-24 mx-auto rounded-3xl shadow-2xl shadow-purple-600/25 animate-pulse"
               />
@@ -57,25 +60,12 @@ const Home: React.FC = () => {
             </div>
           </div>
 
-          {/* Stats Section */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-8 sm:gap-12 mb-16">
-            <StatsCard 
-              value={stats.activeProjects} 
-              label="Active Projects" 
-            />
-            <StatsCard 
-              value={stats.contributors} 
-              label="Contributors" 
-            />
-            <StatsCard 
-              value={stats.codeCommits} 
-              label="Code Commits" 
-            />
-          </div>
-
           {/* Discord Button */}
           <div className="flex justify-center mb-16">
-            <button className="group inline-flex items-center space-x-3 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white font-semibold px-8 py-4 rounded-2xl shadow-lg shadow-blue-600/25 hover:shadow-blue-600/40 transition-all duration-300 transform hover:scale-105">
+            <button 
+              onClick={handleJoinDiscord}
+              className="group inline-flex items-center space-x-3 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white font-semibold px-8 py-4 rounded-2xl shadow-lg shadow-blue-600/25 hover:shadow-blue-600/40 transition-all duration-300 transform hover:scale-105"
+            >
               <MessageCircle className="w-6 h-6 group-hover:animate-bounce" />
               <span className="text-lg">Join the Discord!</span>
             </button>
@@ -138,7 +128,7 @@ const Home: React.FC = () => {
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
               <img 
-                src="https://i.imgur.com/srcQZEw.png" 
+                src="/logo.png" 
                 alt="Star Devs Logo" 
                 className="w-8 h-8 rounded-lg"
               />
