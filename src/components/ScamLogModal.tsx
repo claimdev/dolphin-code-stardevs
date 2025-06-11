@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, User, Calendar, AlertTriangle, FileText, Image, CheckCircle, XCircle, Clock, Trash2 } from 'lucide-react';
+import { X, User, Calendar, AlertTriangle, FileText, Image, CheckCircle, XCircle, Clock, Trash2, Shield } from 'lucide-react';
 import { ScamLog } from '../types';
 import { apiUtils } from '../utils/api';
 
@@ -135,6 +135,26 @@ const ScamLogModal: React.FC<ScamLogModalProps> = ({ log, onClose, onUpdate }) =
                 <div className="md:col-span-2">
                   <label className="block text-sm font-medium text-gray-400 mb-1">Additional Information</label>
                   <p className="text-white bg-gray-800 px-3 py-2 rounded-lg">{log.victimInfo.additionalInfo}</p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Scammer Information */}
+          <div className="bg-gray-900/50 rounded-xl p-6">
+            <h3 className="text-lg font-semibold text-white mb-4 flex items-center space-x-2">
+              <Shield className="w-5 h-5" />
+              <span>Scammer Information</span>
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-400 mb-1">User ID</label>
+                <p className="text-white bg-gray-800 px-3 py-2 rounded-lg font-mono text-sm">{log.scammerInfo.userId}</p>
+              </div>
+              {log.scammerInfo.additionalInfo && (
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-gray-400 mb-1">Additional Information</label>
+                  <p className="text-white bg-gray-800 px-3 py-2 rounded-lg">{log.scammerInfo.additionalInfo}</p>
                 </div>
               )}
             </div>
