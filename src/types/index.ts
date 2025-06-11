@@ -2,7 +2,11 @@ export interface ScamLog {
   id: string; // Format: ABC001 (first 3 letters of username + incremental number)
   reportedBy: string;
   victimInfo: {
-    userId: string; // Changed from scammerInfo.username to victimInfo.userId
+    userId: string; // Victim's Discord ID
+    additionalInfo?: string;
+  };
+  scammerInfo: {
+    userId: string; // Scammer's Discord ID
     additionalInfo?: string;
   };
   scamDetails: {
@@ -14,7 +18,7 @@ export interface ScamLog {
   status: 'pending' | 'verified' | 'rejected';
   createdAt: string;
   updatedAt: string;
-  reportDate: string; // New field for when the report was made
+  reportDate: string; // When the report was made
 }
 
 export interface DiscordStats {
