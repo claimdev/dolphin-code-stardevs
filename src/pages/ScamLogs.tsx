@@ -53,6 +53,10 @@ const ScamLogs: React.FC = () => {
     setFilteredLogs(filtered);
   };
 
+  const handleOpenTicket = () => {
+    window.open('https://discord.com/channels/1291000248105435136/1376201316786770090', '_blank');
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 flex items-center justify-center">
@@ -170,7 +174,10 @@ const ScamLogs: React.FC = () => {
                   If you've been scammed or need to report suspicious activity, please open a support ticket in our Discord server.
                 </p>
                 
-                <button className="w-full bg-blue-600 hover:bg-blue-500 text-white font-medium py-2 px-4 rounded-lg transition-colors">
+                <button 
+                  onClick={handleOpenTicket}
+                  className="w-full bg-blue-600 hover:bg-blue-500 text-white font-medium py-2 px-4 rounded-lg transition-colors"
+                >
                   Open Ticket
                 </button>
               </div>
